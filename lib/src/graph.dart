@@ -70,11 +70,8 @@ enum OkfGraphResolution {
 
   const OkfGraphResolution(this.wireValue);
 
-  /// Stable JSON representation.
-  final String wireValue;
-
   /// Parses the stable JSON representation.
-  static OkfGraphResolution fromWireValue(String value) {
+  factory OkfGraphResolution.fromWireValue(String value) {
     for (final resolution in values) {
       if (resolution.wireValue == value) {
         return resolution;
@@ -82,6 +79,9 @@ enum OkfGraphResolution {
     }
     throw FormatException('Unknown graph resolution', value);
   }
+
+  /// Stable JSON representation.
+  final String wireValue;
 }
 
 /// Composable filters for constructing an [OkfGraph].
