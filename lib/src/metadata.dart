@@ -55,10 +55,7 @@ enum OkfLifecycleStatus {
 
   const OkfLifecycleStatus(this.wireValue);
 
-  /// The stable lowercase representation.
-  final String wireValue;
-
-  static OkfLifecycleStatus _parse(String? value) {
+  factory OkfLifecycleStatus._parse(String? value) {
     switch (value?.trim().toLowerCase()) {
       case null:
       case '':
@@ -72,6 +69,9 @@ enum OkfLifecycleStatus {
         return unknown;
     }
   }
+
+  /// The stable lowercase representation.
+  final String wireValue;
 }
 
 /// A date range framing one or more source usage counts.
