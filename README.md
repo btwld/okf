@@ -30,7 +30,7 @@ implementation and is not affiliated with or endorsed by Google.
 Install the command-line tool with Homebrew:
 
 ```console
-brew install conceptadev/tap/okf
+brew install btwld/tap/okf
 ```
 
 With Dart 3.9 or later, add the library:
@@ -94,7 +94,7 @@ Gate a repository on OKF Spec conformance with one step and no configuration:
 
 ```yaml
 steps:
-  - uses: conceptadev/okf@v0.5.0
+  - uses: btwld/okf@v0.5.0
 ```
 
 The action downloads the released `okf` archive for the ref in `uses`, unpacks
@@ -402,4 +402,4 @@ their generated schema companions are available through the public OKF library.
 Apache License 2.0.
 
 [spec]: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/62432a095456147ee71e70ac6e4dc0d2dea3ac30/okf/SPEC.md
-[example]: https://github.com/conceptadev/okf/blob/main/example/okf.dart
+[example]: https://github.com/btwld/okf/blob/main/example/okf.dart
