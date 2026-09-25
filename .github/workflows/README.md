@@ -25,7 +25,7 @@ Release notes come from the first `## <version>` section of `CHANGELOG.md`.
 ## Release process
 
 1. Bump `version:` in `pubspec.yaml`
-2. Update `lib/src/version.dart` and the `conceptadev/okf@vX.Y.Z` reference in
+2. Update `lib/src/version.dart` and the `btwld/okf@vX.Y.Z` reference in
    `README.md` to the same value (`dart test test/ci_gate_test.dart` checks all
    three agree)
 3. Add the matching `## X.Y.Z` section at the top of `CHANGELOG.md`
@@ -43,7 +43,7 @@ must match step 1.
   cli_pkg hardcodes the GitHub release's `tag_name` to the **bare** version, so
   the release job also publishes a `X.Y.Z` tag at the same commit and the
   release assets hang off that one. Both tags therefore exist for every
-  release, and `conceptadev/okf@vX.Y.Z` keeps working as an action ref.
+  release, and `btwld/okf@vX.Y.Z` keeps working as an action ref.
 - **CHANGELOG**: cli_pkg reads `CHANGELOG.md` for the GitHub release body
 - **Assets**: `okf-<version>-<os>-<arch>.tar.gz` per platform, attached to the
   bare-version release. Only the
@@ -55,11 +55,11 @@ must match step 1.
 | Secret | Used by | Purpose |
 | --- | --- | --- |
 | `GITHUB_TOKEN` | automatic | create the release, upload assets |
-| `HOMEBREW_TAP_GH_TOKEN` | `pkg-homebrew-update` | push to `conceptadev/homebrew-tap` |
+| `HOMEBREW_TAP_GH_TOKEN` | `pkg-homebrew-update` | push to `btwld/homebrew-tap` |
 
 pub.dev needs no secret: the `release` job requests `id-token: write` and
 setup-dart exchanges that OIDC token for temporary credentials. This requires
-automated publishing to be configured on pub.dev for `conceptadev/okf` with
+automated publishing to be configured on pub.dev for `btwld/okf` with
 this workflow filename (`release.yml`) and a `v{{version}}` tag pattern.
 cli_pkg's `pkg-pub-deploy` is deliberately unused: it can only publish from a
 long-lived `PUB_CREDENTIALS` file.
@@ -94,5 +94,5 @@ canonically owns the repository. cli_pkg does not follow redirects on POST.
 
 ### Homebrew step fails to push
 
-`HOMEBREW_TAP_GH_TOKEN` needs write access to `conceptadev/homebrew-tap`, and
+`HOMEBREW_TAP_GH_TOKEN` needs write access to `btwld/homebrew-tap`, and
 the tap must already contain `Formula/okf.rb`.

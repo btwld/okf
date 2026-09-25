@@ -169,7 +169,7 @@ void main() {
     expect(
       formula,
       contains(
-        RegExp(r'url "https://github\.com/conceptadev/okf/archive/refs/tags/v'),
+        RegExp(r'url "https://github\.com/btwld/okf/archive/refs/tags/v'),
       ),
       reason: "the ref must be the tag form Homebrew's url audit accepts",
     );

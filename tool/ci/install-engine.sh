@@ -30,7 +30,7 @@ trap 'rm -f "$archive"' EXIT
 
 curl --fail --silent --show-error --location --retry 3 \
   --output "$archive" \
-  "https://github.com/conceptadev/okf/releases/download/$release/$asset"
+  "https://github.com/btwld/okf/releases/download/$release/$asset"
 tar --extract --gzip --file "$archive" --directory "$directory"
 
 # cli_pkg archives unpack to "<standalone name>/<executable>".
