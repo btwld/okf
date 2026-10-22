@@ -14,7 +14,10 @@
 - Throw `OkfBundleChangeException` from `prepare` for a text that holds an
   unpaired surrogate, whether a change set or a projection produced it.
   Previously the writer replaced the surrogate with U+FFFD, so the committed
-  bytes differed from the text the validator judged.
+  bytes differed from the text the validator judged. `OkfBundleWriter.writeAll`
+  and `writeDocument`, which `okf format` and `okf index` write through, now
+  throw `ArgumentError` for such a text in check mode too, before touching the
+  filesystem.
 - Add `OkfPreparedCandidate.toLoadResult()`, which reads a candidate as a
   later load of the committed bundle would, retaining load findings for
   source files the candidate does not replace.

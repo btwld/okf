@@ -32,7 +32,8 @@ projection is a reserved-file repair. A refusal carries its candidate, so a
 caller can show what it refused. Every text the change set or the projection
 produces must survive UTF-8 encoding; one with an unpaired surrogate is the
 same tool error, because the writer would commit other bytes than the ones
-judged.
+judged. `OkfBundleWriter` refuses such a text as well, so no write path
+replaces a surrogate with U+FFFD.
 
 Concepts stay out of reach: the overlay remains their only writer, so the
 lossless round trip keeps one owner. Only concept files keep one writer. A

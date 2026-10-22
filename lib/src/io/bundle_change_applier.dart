@@ -13,6 +13,7 @@ import '../bundle_change_set.dart';
 import '../bundle_path.dart';
 import '../document.dart';
 import '../finding.dart';
+import '../utf8_text.dart';
 import 'bundle_loader.dart';
 import 'bundle_lock.dart';
 import 'bundle_writer.dart';
@@ -231,9 +232,11 @@ Map<String, String> _withProjection(
 /// Throws unless [text] survives the UTF-8 encoding the writer applies.
 ///
 /// `utf8.encode` replaces an unpaired surrogate with U+FFFD, so such a text
-/// would be validated as one string and committed as another.
+/// would be validated as one string and committed as another. The writer
+/// refuses it too; checking here keeps the refusal a tool error at
+/// preparation instead of a failed commit.
 void _requireUtf8Text(String path, String text) {
-  if (utf8.decode(utf8.encode(text)) != text) {
+  if (hasUnpairedSurrogate(text)) {
     throw OkfBundleChangeException(
       'Bundle path $path holds an unpaired surrogate, which UTF-8 cannot '
       'encode.',

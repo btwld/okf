@@ -96,6 +96,84 @@ void main() {
       );
     });
 
+    test(
+      'refuses a text UTF-8 cannot encode before touching the filesystem',
+      () async {
+        // utf8.encode would write U+FFFD for each lone surrogate, so the bytes
+        // on disk would not be the text the caller passed.
+        final root = Directory(p.join(sandbox.path, 'missing'));
+        const writer = OkfBundleWriter();
+
+        for (final text in <String>[
+          'lead \uD800 alone\n',
+          'trail \uDC00 alone\n',
+          'reversed \uDC00\uD800 pair\n',
+          'ends on a lead \uD800',
+        ]) {
+          for (final checkOnly in <bool>[false, true]) {
+            await expectLater(
+              writer.writeAll(root.path, <String, String>{
+                // Sorted first, so a per-file write would have written it.
+                'a.md': 'valid\n',
+                'b.md': text,
+              }, checkOnly: checkOnly),
+              throwsA(
+                isA<ArgumentError>()
+                    .having((error) => error.name, 'name', 'files')
+                    .having(
+                      (error) => '${error.message}',
+                      'message',
+                      contains('b.md holds an unpaired surrogate'),
+                    ),
+              ),
+              reason: '$text (checkOnly: $checkOnly)',
+            );
+          }
+          await expectLater(
+            const OkfBundleWriteTransaction().writeAll(
+              root.path,
+              <String, String>{'a.md': 'valid\n', 'b.md': text},
+            ),
+            throwsA(isA<ArgumentError>()),
+            reason: text,
+          );
+        }
+        // Neither the root, its lock file nor the valid file was created.
+        expect(await root.exists(), isFalse);
+
+        final paired = await writer.writeAll(root.path, <String, String>{
+          'b.md': 'paired \uD83D\uDE00\n',
+        });
+        expect(paired.changedPaths, <String>['b.md']);
+        expect(await File(p.join(root.path, 'b.md')).readAsBytes(), <int>[
+          ...utf8.encode('paired '),
+          0xF0,
+          0x9F,
+          0x98,
+          0x80,
+          0x0A,
+        ]);
+      },
+    );
+
+    test('refuses a serialized document UTF-8 cannot encode', () async {
+      final root = await Directory(p.join(sandbox.path, 'bundle')).create();
+      final document = OkfDocument(
+        frontmatter: <String, Object?>{'type': 'Reference', 'title': 'Example'},
+        body: '# Example \uD800\n',
+      );
+
+      await expectLater(
+        const OkfBundleWriter().writeDocument(
+          root.path,
+          'example.md',
+          document,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(await root.list().isEmpty, isTrue);
+    });
+
     test('transactional writes restore the exact original bytes', () async {
       final root = await Directory(p.join(sandbox.path, 'bundle')).create();
       final original = File(p.join(root.path, 'a.md'));
