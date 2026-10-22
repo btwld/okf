@@ -302,10 +302,19 @@ switch (result) {
 }
 ```
 
-Update, link and deprecate changes edit an existing concept's text in place
-rather than writing the concept anew, so a diff shows only the lines a change
-touches. Deprecating this concept adds only the `status` line, after its last
-entry:
+okf writes concepts under two policies:
+
+- **Canonical output** for `okf format`, `OkfDocument.serialize` and new
+  concepts (`OkfCreateConceptChange`, MCP `create-concept`): keys in the
+  preferred order, block style, okf's own quoting and LF line breaks, with
+  YAML comments dropped.
+- **In-place edits** for update, link and deprecate changes (MCP
+  `update-concept`, `link-concepts` and `deprecate-concept`): the concept's
+  text is edited rather than written anew, so a diff shows only the lines a
+  change touches.
+
+Deprecating this concept, for example, adds only the `status` line, after its
+last entry:
 
 ```markdown
 ---
@@ -435,9 +444,11 @@ hard conformance errors from advisory findings:
 - Unicode concept IDs are accepted when safe; an advisory finding marks
   IDs that may be less portable across producers.
 
-Formatting is semantic rather than byte-preserving. It retains unknown data
-and Markdown content, but YAML comments, anchors, scalar quoting, and
-whitespace style are not retained.
+Canonical output is semantic rather than byte-preserving: `okf format` and
+new concepts retain unknown data and Markdown content, but not YAML comments,
+anchors, scalar quoting, or whitespace style. In-place edits of existing
+concepts preserve every byte they do not change, and keep a canonical concept
+canonical, so the two policies never pull a formatted bundle apart.
 
 Filesystem link checks assume a quiescent bundle rather than a directory tree
 being concurrently replaced by an adversarial process. Prepared multi-file
