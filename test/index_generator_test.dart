@@ -130,8 +130,9 @@ okf_version: " 0.2 "
 
   test('output bytes are pinned to the generator revision', () {
     // Consumers compare indexes with this output under one revision. Changed
-    // bytes are a new revision: bump okfIndexGeneratorRevision and ship the
-    // change only in a minor release (ADR-0009).
+    // bytes are a new revision: ship the change only in a minor release, set
+    // okfIndexGeneratorRevision to that release's version and update this
+    // golden (ADR-0009).
     expect(okfIndexGeneratorRevision, '0.5.0');
 
     final bundle = OkfBundle.fromDocuments(

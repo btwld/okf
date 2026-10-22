@@ -15,7 +15,8 @@ typedef OkfDirectoryDescriptionSynthesizer =
 ///
 /// For the same bundle and [synthesizeDescription], the output bytes stay the
 /// same across every release sharing one [okfIndexGeneratorRevision]. A change
-/// to them bumps that revision and ships only in a minor release.
+/// to them ships only in a minor release, which sets that revision to its own
+/// version.
 final class OkfIndexGenerator {
   /// Creates an index generator.
   const OkfIndexGenerator({this.synthesizeDescription});

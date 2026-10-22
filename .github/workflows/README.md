@@ -29,10 +29,9 @@ Release notes come from the first `## <version>` section of `CHANGELOG.md`.
    reference in `README.md` to the same value (`test/ci/gate_test.dart` and
    `test/cli_test.dart` check that all three agree). Leave
    `okfIndexGeneratorRevision` alone unless the release changes
-   `OkfIndexGenerator`'s output, which the golden test in
-   `test/index_generator_test.dart` catches; then set the revision to the new
-   version and update the golden, and the release must be a minor one
-   (ADR-0009)
+   `OkfIndexGenerator`'s output; then the release must be a minor one, which
+   sets the revision to its own version and updates the golden in
+   `test/index_generator_test.dart` that guards the output (ADR-0009)
 3. Add the matching `## X.Y.Z` section at the top of `CHANGELOG.md`
 4. Commit
 5. `git tag vX.Y.Z && git push origin vX.Y.Z`
