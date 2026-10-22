@@ -234,6 +234,11 @@ final class OkfDocument {
   /// [OkfDocument.parse] reads them: LF, CRLF and a lone CR each end a line,
   /// and a byte order mark adds none.
   ///
+  /// A final line break ends the body's last line rather than starting
+  /// another, so the empty element that splitting leaves after it is not a
+  /// line: a body of `k` lines ends on line `bodyStartLine + k - 1`, which is
+  /// the source's last line.
+  ///
   /// Without frontmatter the body is the whole source and begins on line 1.
   /// Otherwise it begins on the line after the closing `---` delimiter, or on
   /// the line after that when parsing drops the blank separator line. An

@@ -463,8 +463,8 @@ cycle: &cycle [*cycle]
 /// CR. A final line break leaves an empty last element.
 List<String> _sourceLines(String source) => source.split(RegExp('\r\n|\r|\n'));
 
-/// The lines of [source], where a final line break ends the last line rather
-/// than starting another.
+/// The number of lines in [source], where a final line break ends the last
+/// line rather than starting another.
 int _lineCount(String source) {
   if (source.isEmpty) {
     return 0;
@@ -474,12 +474,18 @@ int _lineCount(String source) {
 }
 
 /// Expects line `n` of [document]'s body to be line `bodyStartLine + n - 1`
-/// of [source], through to the source's end.
+/// of [source], through to the source's end, and the body's last line, counted
+/// as [OkfDocument.bodyStartLine] documents, to be the source's last line.
 void _expectBodyLinesMatchSource(String source, OkfDocument document) {
   final sourceLines = _sourceLines(source);
   final bodyLines = document.body.split('\n');
   final start = document.bodyStartLine!;
 
+  expect(
+    start + _lineCount(document.body) - 1,
+    _lineCount(source),
+    reason: source,
+  );
   expect(start + bodyLines.length - 1, sourceLines.length, reason: source);
   for (var line = 1; line <= bodyLines.length; line++) {
     expect(
