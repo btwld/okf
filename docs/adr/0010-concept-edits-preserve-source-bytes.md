@@ -60,5 +60,16 @@ New concepts, `serialize` and `okf format` keep the canonical form.
 - The rewriter is the one place that knows YAML layout. Its fallbacks are
   coarser but always correct, so a layout it does not handle costs diff noise,
   never data.
+- `package:yaml_edit` 2.2.4 was weighed as the editing engine and not
+  adopted. It brings no new transitive packages, and with okf's spelling
+  forced on it matched the rewriter on 2,379 of 2,460 fixture edits, but it
+  could replace only the in-place step, about half the rewriter's code: the
+  delimiters, body, byte order mark, fallback ladder, read-back check,
+  canonical rule and no-op comparison stay. The other edits break this
+  policy: it writes a replaced flow collection as a block and a replaced
+  literal block as a quoted string, drops the comment and blank lines after
+  a removed key, leaves blank lines behind some nested replacements, inserts
+  a new key alphabetically into a mapping whose keys are sorted, and reports
+  an alias as an internal assertion error.
 - Parsed documents keep their source text, so a loaded bundle holds each
   concept's text about twice.
