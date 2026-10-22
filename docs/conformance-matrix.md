@@ -38,12 +38,12 @@ other rule (ADR-0002):
 
 | Rule | okf requires | Spec text |
 | --- | --- | --- |
-| `okf/invalid-index-structure` | An index body holds only level-one headings and list entries of the form `* [Title](link)` or `* [Title](link) - description`. Prose lines, other heading levels and unlinked entries are errors. | §8 shows the heading level and the entry form only in its example. |
+| `okf/invalid-index-structure` | An index body holds only level-one headings and list entries of the form `* [Title](link)`, optionally followed by ` - description`; a `-` bullet works as well as `*`. Prose lines, other heading levels, other list markers such as `+` or `1.`, and unlinked entries are errors. | §8 shows the heading level and the entry form only in its example. |
 | `okf/index-entry-before-section` | Every entry follows a level-one section heading. | §8 groups entries "under a heading", of no stated level. |
 | `okf/empty-index-section` | Every section holds at least one entry. | §8 sets no minimum per section. |
 | `okf/invalid-log-frontmatter` | A log has no frontmatter. | §8 and §12 forbid frontmatter in indexes, apart from the root `okf_version`; §9 does not mention it. |
 | `okf/missing-log-title` | A log begins with one level-one title. | The title appears only in §9's example. |
-| `okf/invalid-log-structure` | A log body holds only that title, `## YYYY-MM-DD` date headings and list entries. Prose lines and other heading levels are errors. | §9 calls log entries "prose" and shows the heading level and list form only in its example. |
+| `okf/invalid-log-structure` | A log body holds only that title, `## YYYY-MM-DD` date headings and `*` or `-` list entries. Prose lines, other heading levels and other list markers are errors. | §9 calls log entries "prose" and shows the heading level and list form only in its example. |
 | `okf/missing-log-date` | A log has at least one date heading. | §9 requires no entry. |
 | `okf/empty-log-date` | Every date heading has at least one entry. | §9 sets no minimum per date. |
 
@@ -54,13 +54,15 @@ The other reserved-file rules restate the Spec's text:
 `okf/log-entry-before-date` (date-grouped entries) and
 `okf/log-not-newest-first` (newest first).
 
-Validation does not check that an index is complete either. An index may omit
-concepts and subdirectories, link to missing files or leave out descriptions,
-because §11 forbids rejecting a bundle for missing indexes or broken links and
-§8 only recommends descriptions. So a producer that writes its own `index.md`
-or `log.md`, directly or through a reserved-file projection, must meet okf's
-structure rather than only the Spec's text, and alone decides what its index
-lists.
+Validation does not check that an index is complete either. okf accepts an
+index that omits concepts or subdirectories, links to missing files or leaves
+out descriptions. §8 says an index enumerates its directory's contents but not
+which concepts and subdirectories it must list, §11 makes missing `index.md`
+files and broken cross-links non-rejectable, and §8 only recommends
+descriptions, so okf leaves completeness to the producer. A producer that
+writes its own `index.md` or `log.md`, directly or through a reserved-file
+projection, must therefore meet okf's structure rather than only the Spec's
+text, and alone decides what its index lists.
 
 ## Package contracts
 
