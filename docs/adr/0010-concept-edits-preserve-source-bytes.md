@@ -28,6 +28,13 @@ New concepts, `serialize` and `okf format` keep the canonical form.
 - A new key goes directly after the last entry of its mapping, not at its
   place in the preferred key order: reordering would move lines the change
   did not touch.
+- Canonical in, canonical out. Frontmatter that already holds exactly what
+  the emitter writes for it, as `okf format` leaves it, stays that way: the
+  edited block is written from its values in the emitter's form, which puts a
+  new key at its place in the preferred order and a filled `[]` or `{}` in
+  block style while keeping every unchanged line. Before this ADR every
+  change set wrote canonical concepts, so an okf write must not make a bundle
+  that passed `okf format --check` fail it.
 - A change is a no-op when the resulting mapping and body equal the current
   ones as YAML data: mappings compare without regard to key order, and an
   integer never equals a double. A no-op returns the text byte for byte and

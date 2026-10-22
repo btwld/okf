@@ -566,6 +566,143 @@ sources:
       );
     });
 
+    test('keeps a canonical block canonical', () {
+      // The block holds exactly what the emitter writes for it, as after
+      // `okf format`, so new keys go to their preferred place and a filled
+      // empty collection is written in block style.
+      const canonical = '''
+---
+type: Metric
+title: Revenue
+tags: []
+sources:
+  -
+    resource: ledger.md
+    relationship: derived-from
+owner: finance-team
+---
+
+# Revenue
+''';
+
+      expect(
+        _rewrite(canonical, (frontmatter) {
+          frontmatter['status'] = 'deprecated';
+          frontmatter['description'] = 'Monthly.';
+          frontmatter['x_added'] = 1;
+        }),
+        canonical
+            .replaceFirst('tags: []\n', 'description: Monthly.\ntags: []\n')
+            .replaceFirst('sources:\n', 'status: deprecated\nsources:\n')
+            .replaceFirst(
+              'owner: finance-team\n',
+              'owner: finance-team\nx_added: 1\n',
+            ),
+      );
+      expect(
+        _rewrite(
+          canonical,
+          (frontmatter) => frontmatter['tags'] = <Object?>['finance'],
+        ),
+        canonical.replaceFirst('tags: []\n', 'tags:\n  - finance\n'),
+      );
+      expect(
+        _rewrite(
+          canonical.replaceAll('\n', '\r\n'),
+          (frontmatter) => frontmatter['status'] = 'deprecated',
+        ),
+        canonical
+            .replaceFirst('sources:\n', 'status: deprecated\nsources:\n')
+            .replaceAll('\n', '\r\n'),
+        reason: 'line breaks do not count, and stay',
+      );
+
+      // One respelled line makes the block hand-written, which keeps the
+      // in-place rules.
+      final quoted = canonical.replaceFirst(
+        'title: Revenue',
+        'title: "Revenue"',
+      );
+      expect(
+        _rewrite(quoted, (frontmatter) => frontmatter['status'] = 'deprecated'),
+        quoted.replaceFirst(
+          'owner: finance-team\n',
+          'owner: finance-team\nstatus: deprecated\n',
+        ),
+      );
+      expect(
+        _rewrite(
+          quoted,
+          (frontmatter) => frontmatter['tags'] = <Object?>['finance'],
+        ),
+        quoted.replaceFirst('tags: []', 'tags: [finance]'),
+      );
+    });
+
+    test('keeps every fixture canonical once it is formatted', () {
+      var edits = 0;
+      for (final MapEntry(key: name, value: fixture) in _fixtures.entries) {
+        final String source;
+        try {
+          source = OkfDocument.parse(fixture).serialize();
+        } on OkfYamlEncodeException {
+          continue;
+        }
+        final document = OkfDocument.parse(source);
+        final original = document.frontmatter;
+        for (final (label, frontmatter) in <(String, Map<String, Object?>)>[
+          for (final key in okfPreferredFrontmatterKeyOrder)
+            if (!original.containsKey(key))
+              ('add $key', <String, Object?>{...original, key: 'added'}),
+          (
+            'add tags',
+            <String, Object?>{
+              ...original,
+              'tags': <Object?>['a'],
+            },
+          ),
+          (
+            'add an unknown key',
+            <String, Object?>{...original, 'x_added': <Object?>[]},
+          ),
+          for (final key in original.keys) ...<(String, Map<String, Object?>)>[
+            ('set $key', <String, Object?>{...original, key: 'changed'}),
+            ('remove $key', Map.of(original)..remove(key)),
+            if (original[key] case final List<Object?> items)
+              (
+                'append to $key',
+                <String, Object?>{
+                  ...original,
+                  key: <Object?>[...items, 'appended'],
+                },
+              ),
+            if (original[key] case final Map<Object?, Object?> entries)
+              (
+                'add inside $key',
+                <String, Object?>{
+                  ...original,
+                  key: <Object?, Object?>{...entries, 'x_added': 1},
+                },
+              ),
+          ],
+        ]) {
+          edits++;
+          final rewritten = document.rewriteSource(frontmatter: frontmatter);
+          expect(
+            OkfDocument.parse(rewritten).frontmatter,
+            frontmatter,
+            reason: '$name: $label reads back',
+          );
+          expect(
+            OkfDocument.parse(rewritten).serialize(),
+            rewritten,
+            reason: '$name: $label stays canonical',
+          );
+        }
+      }
+      expect(edits, greaterThan(100));
+    });
+
     test('keeps the frontmatter byte-identical when only the body changes', () {
       final document = OkfDocument.parse(_styled);
       final reordered = <String, Object?>{

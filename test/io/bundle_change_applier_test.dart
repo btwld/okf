@@ -5,6 +5,8 @@ import 'package:okf/okf_io.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
+import '../support.dart';
+
 void main() {
   late Directory root;
   late OkfBundleChangeApplier changes;
@@ -748,6 +750,72 @@ description: Recognized monthly revenue.
       );
     });
 
+    test('an edit keeps a canonical bundle canonical', () async {
+      // `okf format` leaves this bundle alone, so no edit may make
+      // `okf format --check` fail on it: new keys go to their place in the
+      // preferred order, not after the last entry.
+      await _write(root, 'metrics/revenue.md', '''
+---
+type: Metric
+title: Revenue
+tags: []
+sources:
+  -
+    resource: ledger.md
+    relationship: derived-from
+owner: finance-team
+---
+
+# Revenue
+''');
+      expect(await _formatCheck(root), 0, reason: 'the seed is canonical');
+
+      final revenue = OkfConceptId('metrics/revenue');
+      for (final change in <OkfBundleChange>[
+        OkfDeprecateConceptChange(id: revenue),
+        OkfUpdateConceptChange(
+          id: revenue,
+          frontmatterChanges: const <String, Object?>{
+            'description': 'Monthly revenue.',
+            'tags': <Object?>['finance'],
+          },
+        ),
+        OkfLinkConceptsChange(
+          source: revenue,
+          target: OkfConceptId('metrics/margin'),
+          relationship: 'feeds',
+        ),
+      ]) {
+        await commit(change);
+        expect(
+          await _formatCheck(root),
+          0,
+          reason: '${change.runtimeType} keeps the bundle formatted',
+        );
+      }
+
+      expect(await _read(root, 'metrics/revenue.md'), '''
+---
+type: Metric
+title: Revenue
+description: Monthly revenue.
+tags:
+  - finance
+status: deprecated
+sources:
+  -
+    resource: ledger.md
+    relationship: derived-from
+  -
+    resource: margin.md
+    relationship: feeds
+owner: finance-team
+---
+
+# Revenue
+''');
+    });
+
     test('an edit that cannot be written so is a tool error', () async {
       await _write(root, 'notes/plain.md', '# Plain\n');
       final before = await _snapshot(root);
@@ -1282,6 +1350,13 @@ okf_version: "0.2"
 * **Created**: [Revenue](metrics/revenue.md)
 ''');
 }
+
+/// The exit code of `okf format --check` on the bundle at [root].
+Future<int> _formatCheck(Directory root) async => (await runCli(<String>[
+  'format',
+  '--check',
+  root.path,
+], root.path)).exitCode;
 
 Future<String> _read(Directory root, String relativePath) => File(
   p.joinAll(<String>[root.path, ...p.posix.split(relativePath)]),

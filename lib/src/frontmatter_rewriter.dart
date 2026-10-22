@@ -72,6 +72,16 @@ extension OkfDocumentSourceRewrite on OkfDocument {
   /// document's first line, so a CRLF document stays CRLF, and the delimiter
   /// lines are kept.
   ///
+  /// A canonical block stays canonical. When the frontmatter block holds
+  /// exactly the lines [OkfYamlEmitter.emit] writes for its values, whatever
+  /// their line breaks, as `okf format` leaves it, the block of a result
+  /// that reads back is written the same way from the values it holds. That
+  /// keeps every unchanged line and the order of nested keys, moves each new
+  /// top-level key from after the last entry to its place in
+  /// [OkfYamlEmitter.preferredTopLevelKeys], and writes a filled empty
+  /// collection, which the rules above keep in flow style, in block style.
+  /// So an edit never makes `okf format --check` fail on a file it passed.
+  ///
   /// A [body] equal to this document's body once line endings are
   /// normalized and a final newline is added keeps the current bytes; any
   /// other is written in that canonical form, after one blank line, with the
@@ -208,6 +218,27 @@ String _rewriteSource(
     return source;
   }
 
+  // Canonical in, canonical out: an edit of a block `okf format` would leave
+  // alone must not make `okf format --check` fail.
+  final keepsCanonical = _isCanonicalBlock(
+    layout,
+    original.frontmatter,
+    emitter,
+  );
+
+  // [text] when it reads back, in canonical form when the source block was
+  // canonical; otherwise null.
+  String? accepted(String text) {
+    if (!_readsBack(text, target, expectedBody)) {
+      return null;
+    }
+    if (!keepsCanonical) {
+      return text;
+    }
+    final canonical = _canonicalized(text, emitter);
+    return _readsBack(canonical, target, expectedBody) ? canonical : null;
+  }
+
   final root = layout.yamlRoot();
   if (root == null || root is YamlMap && _editableRoot(root, layout)) {
     for (final nested in const <bool>[true, false]) {
@@ -221,17 +252,57 @@ String _rewriteSource(
       } on _NotInPlace {
         continue;
       }
-      if (_readsBack(edited, target, expectedBody)) {
-        return edited;
+      if (accepted(edited) case final text?) {
+        return text;
       }
     }
   }
 
-  final canonical = layout.withYaml(emitter.emit(target), newBody);
-  if (_readsBack(canonical, target, expectedBody)) {
-    return canonical;
+  if (accepted(layout.withYaml(emitter.emit(target), newBody))
+      case final text?) {
+    return text;
   }
   throw _unwritable(frontmatter);
+}
+
+/// Whether the frontmatter block of [layout] holds exactly the lines
+/// [emitter] writes for [frontmatter], whatever their line breaks.
+bool _isCanonicalBlock(
+  _SourceLayout layout,
+  Map<String, Object?> frontmatter,
+  OkfYamlEmitter emitter,
+) {
+  final String yaml;
+  try {
+    yaml = emitter.emit(frontmatter);
+  } on OkfYamlEncodeException {
+    return false;
+  }
+  final lines = yaml.isEmpty ? const <String>[] : yaml.split('\n');
+  if (lines.length != layout.yamlLineCount) {
+    return false;
+  }
+  for (var line = 0; line < lines.length; line++) {
+    if (layout.yamlLine(line) != lines[line]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// [text] with its frontmatter block written as [emitter] writes the values
+/// it holds, which keeps every line that already is.
+///
+/// For an edit of a canonical block, this moves a new top-level key from
+/// after the last entry to its place in the preferred key order and writes a
+/// filled empty collection, which an edit keeps in flow style, in block
+/// style. Unchanged entries, and the order of nested keys, stay as they are.
+String _canonicalized(String text, OkfYamlEmitter emitter) {
+  final layout = _SourceLayout(text);
+  final frontmatter = OkfDocument.parse(text).frontmatter;
+  return _isCanonicalBlock(layout, frontmatter, emitter)
+      ? text
+      : layout.withYaml(emitter.emit(frontmatter), null);
 }
 
 const String _byteOrderMark = '\uFEFF';

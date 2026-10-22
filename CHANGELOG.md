@@ -12,7 +12,10 @@
   block when its new value has a line break, a changed block mapping is
   edited entry by entry, a removed key removes only its own lines, a new key
   goes directly after the last entry of its mapping, and a link appends its
-  `sources` item after the last one. New lines take the file's line break,
+  `sources` item after the last one. Frontmatter already in the canonical
+  form `okf format` writes stays canonical, with a new key at its place in
+  the preferred key order, so an edit never makes `okf format --check` fail
+  on a bundle that passed it. New lines take the file's line break,
   so CRLF files stay CRLF, and a concept file that begins with a UTF-8 byte
   order mark keeps it. Every edit is parsed again and must read back as the
   requested mapping; otherwise the changed top-level values, and failing that

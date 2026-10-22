@@ -48,7 +48,9 @@ final class OkfCreateConceptChange extends OkfBundleChange {
 /// not alter keep their exact bytes, and so does the body unless [body]
 /// replaces it. A changed value is replaced where it stands, a removed key
 /// loses only its own lines, and a new key goes after the last entry of its
-/// mapping; ADR-0010 records the policy. An update that leaves the concept's
+/// mapping. Frontmatter already in the canonical form `okf format` writes
+/// stays in it, with a new key at its place in the preferred key order.
+/// ADR-0010 records the policy. An update that leaves the concept's
 /// frontmatter and body as they are writes nothing.
 final class OkfUpdateConceptChange extends OkfBundleChange {
   /// Creates an update-change description.

@@ -334,6 +334,11 @@ break, so CRLF files stay CRLF, and a concept file that begins with a UTF-8
 byte order mark keeps it. An update that leaves a concept as it is writes
 nothing. New concepts are written in canonical form.
 
+Frontmatter already in canonical form, as `okf format` writes it, stays in
+canonical form: a new key goes to its place in the preferred key order, such
+as `status` before `sources`, and a filled `[]` is written as a block list.
+So an edit never makes `okf format --check` fail on a bundle that passed it.
+
 Every edit is parsed again and must read back as the requested mapping and
 body. When an in-place edit does not, or cannot be made, okf replaces the
 whole value of each changed top-level key, and failing that re-emits the whole
