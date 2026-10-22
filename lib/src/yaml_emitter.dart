@@ -82,6 +82,47 @@ final class OkfYamlEmitter {
         : result;
   }
 
+  /// Returns the text this emitter writes for the scalar [value].
+  ///
+  /// Hosts use it to predict how a value is written: [emit] writes a scalar
+  /// value as `key: <scalar>`, and spells a mapping key the same way.
+  ///
+  /// A string is written plain, without quotes, when all of these hold:
+  ///
+  /// * it starts with an ASCII letter or `_`;
+  /// * every other character is an ASCII letter, a digit, a space, or one of
+  ///   `_ . / : @ + % -`;
+  /// * it has no leading or trailing whitespace, contains no `: ` and does
+  ///   not end with `:`;
+  /// * ignoring case, it is none of `null`, `true`, `false`, `yes`, `no`,
+  ///   `on`, `off`, `y`, `n`, `.nan` and `.inf`.
+  ///
+  /// Any other string, including the empty string, is written as its JSON
+  /// string literal (`jsonEncode`), which YAML reads as the same
+  /// double-quoted string; only a string with an unpaired surrogate, which
+  /// no YAML text holds, does not read back. So `Revenue` and
+  /// `finance-team` stay plain, while
+  /// `2026-08-18`, `true`, `a: b` and `#tag` are written as `"2026-08-18"`,
+  /// `"true"`, `"a: b"` and `"#tag"`. A multi-line string is written on one
+  /// line, with `\n` escapes.
+  ///
+  /// `null` is written as `null`, booleans as `true` and `false`, integers
+  /// and doubles by their `toString()` (with `.nan`, `.inf` and `-.inf` for
+  /// the non-finite doubles), and a [DateTime] as the JSON string literal of
+  /// its `toIso8601String()`, so it reads back as a string.
+  ///
+  /// Throws [OkfYamlEncodeException] for a collection or any other value
+  /// that is not a scalar.
+  String scalar(Object? value) {
+    if (value is Map || value is Iterable && value is! String) {
+      throw OkfYamlEncodeException(
+        'Only scalar values have a scalar form; found ${value.runtimeType}.',
+        value,
+      );
+    }
+    return _scalar(value);
+  }
+
   Iterable<MapEntry<Object?, Object?>> _orderedRootEntries(
     Map<String, Object?> frontmatter,
   ) sync* {

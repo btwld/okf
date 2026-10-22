@@ -51,6 +51,9 @@
   mark or blank lines around the frontmatter. Concepts loaded by
   `OkfBundleLoader` or read from an `OkfPreparedCandidate` carry it; documents
   built with the constructor or `copyWith` have none.
+- Add `OkfYamlEmitter.scalar`, which returns the text `emit` writes for a
+  scalar, so a host can predict how a string value will look: plain when it
+  is unambiguous, otherwise its JSON string literal.
 - Raise the minimum supported Dart SDK from 3.9 to 3.11 (#62).
 - Turn `OkfGraphResolution.fromWireValue` from a static method into a factory
   constructor (#65). Calls and tear-offs compile unchanged.
