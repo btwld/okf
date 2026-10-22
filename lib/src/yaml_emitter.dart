@@ -57,8 +57,9 @@ final class OkfYamlEncodeException implements FormatException {
 /// text cannot hold one, so the emitter refuses it.
 ///
 /// [OkfDocument.rewriteSource] writes the values it changes with this
-/// emitter too: a scalar exactly as [scalar] writes it, and a collection in
-/// the block style [emit] uses unless it replaces a flow collection.
+/// emitter too: a scalar exactly as [scalar] writes it, unless it keeps a
+/// multi-line string in a literal block, and a collection in the block style
+/// [emit] uses unless it edits a flow collection, which stays in flow style.
 final class OkfYamlEmitter {
   /// Creates an emitter.
   const OkfYamlEmitter({
@@ -94,7 +95,9 @@ final class OkfYamlEmitter {
   /// Hosts use it to predict how a value is written: [emit] writes a scalar
   /// value as `key: <scalar>` and spells a mapping key the same way, and
   /// [OkfDocument.rewriteSource] writes this text for every scalar value or
-  /// key it changes or adds.
+  /// key it changes or adds, except a string with a line break that replaces
+  /// a literal or folded block scalar, which it keeps a literal block when
+  /// it can.
   ///
   /// A string is written plain, without quotes, when all of these hold:
   ///

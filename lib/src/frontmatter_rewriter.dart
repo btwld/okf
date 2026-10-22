@@ -142,12 +142,17 @@ bool _readsBack(
 }
 
 /// A block mapping whose entries can be located by span: one without
-/// aliases, explicit `?` keys or keys that are collections.
+/// aliases or keys that are collections, in which each key of a block
+/// mapping has nothing but indentation and `-` indicators before it on its
+/// line.
 ///
 /// An alias reads back the node it names, so its span is the anchored
 /// node's; editing either place in the text would change the other value.
-/// An explicit key's omitted value has its span on the next token, so its
-/// entry's extent cannot be told from its spans.
+/// An explicit `?` key's omitted value has its span on the next token, so
+/// its entry's extent cannot be told from its spans; the `?` before a key is
+/// what the indentation check finds. A tag or anchor written before a key,
+/// as in `- !tag key: value`, passes it: `package:yaml` starts that key's
+/// span at the tag, and keys are never rewritten in place.
 bool _editableRoot(YamlMap root, _SourceLayout layout) {
   if (root.style != CollectionStyle.BLOCK) {
     return false;

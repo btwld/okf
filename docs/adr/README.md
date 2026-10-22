@@ -21,3 +21,4 @@ behaviour per unit of interface a caller must learn.
 | [0007](0007-check-mode-exits-are-adapter-decisions.md) | Check-mode "would change" exits are adapter decisions |
 | [0008](0008-index-link-destination-grammar.md) | Index link destinations are percent-encoded |
 | [0009](0009-reserved-file-projection.md) | Reserved-file projection joins the single write path |
+| [0010](0010-concept-edits-preserve-source-bytes.md) | Concept edits preserve source bytes |

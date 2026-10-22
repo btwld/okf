@@ -1,0 +1,53 @@
+# ADR-0010: Concept edits preserve source bytes
+
+- Status: accepted
+- Date: 2026-10-22
+- Amends: [ADR-0003](0003-bundle-changeset-single-write-path.md)
+
+## Context
+
+ADR-0003 gave the change set a lossless concept round trip, which the overlay
+met by parsing a concept and re-emitting it in canonical form. The values
+survived, but the text did not: a one-key update turned flow collections into
+block ones, moved keys such as `tags` into the preferred order, dropped
+comments and rewrote CRLF files with LF. A host that shows the diff of a
+change before committing it, such as a write pipeline's preview, saw every
+line move.
+
+## Decision
+
+Update, link and deprecate changes edit an existing concept's text through
+`OkfDocument.rewriteSource`. It locates each entry by `package:yaml` source
+spans and rewrites only what the change alters. New concepts, `serialize` and
+`okf format` keep the canonical form.
+
+- Unchanged keys keep their bytes. A changed value is replaced where it
+  stands, a block mapping is edited entry by entry, and a flow collection by
+  span while it keeps its entries. A block scalar stays a literal block when
+  its new value has a line break. Other values take the emitter's spelling,
+  which `OkfYamlEmitter.scalar` exposes so hosts can predict it.
+- A new key goes directly after the last entry of its mapping, not at its
+  place in the preferred key order: reordering would move lines the change
+  did not touch.
+- A change is a no-op when the resulting mapping and body equal the current
+  ones as YAML data: mappings compare without regard to key order, and an
+  integer never equals a double. A no-op returns the text byte for byte and
+  writes nothing.
+- Every result is parsed again and must read back as the requested mapping
+  and body. The edit falls back in a fixed ladder: in place, then each changed
+  top-level value replaced whole, then the whole mapping re-emitted between
+  the existing delimiters. Frontmatter whose spans cannot locate an entry (a
+  flow root, aliases, explicit `?` keys, collection keys) goes straight to the
+  last step. A result that no step can make read back is a tool error.
+
+## Consequences
+
+- Diffs of concept changes show only the lines the change touches, and a
+  file's style, comments, line breaks and byte order mark survive edits.
+- The read-back check keeps the ADR-0003 guarantee: the bytes validated and
+  committed always parse to the requested values, whatever path wrote them.
+- The rewriter is the one place that knows YAML layout. Its fallbacks are
+  coarser but always correct, so a layout it does not handle costs diff noise,
+  never data.
+- Parsed documents keep their source text, so a loaded bundle holds each
+  concept's text about twice.

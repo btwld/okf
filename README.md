@@ -253,36 +253,57 @@ without touching anything else:
 
 ```dart
 final edited = document.rewriteSource(
-  frontmatter: {...document.frontmatter, 'status': 'deprecated'},
+  frontmatter: {
+    ...document.frontmatter,
+    'verified': {'by': 'human:reviewer', 'at': '2026-08-01T09:00:00Z'},
+    'status': 'deprecated',
+  },
 );
 // ---
 // type: Metric
 // title: Revenue
-// verified: {by: "human:reviewer", at: "2026-07-27T12:00:00Z"}
+// verified: {by: "human:reviewer", at: "2026-08-01T09:00:00Z"}
 // status: deprecated
 // ---
+//
+// # Revenue
 ```
 
 A key whose value is unchanged keeps its exact bytes: its position, flow or
 block style, quoting, comments and the blank lines around it. A changed
-one-line value or flow collection is replaced where it stands, keeping a
-comment after it on its line; a changed block mapping is edited entry by
-entry, and items added to the end of a block sequence go after its last item,
-in that item's style. A removed key removes only its own lines, and a new key
-goes directly after the last entry of its mapping. When the frontmatter and
-body come out equal to the current ones, the text is returned byte for byte.
-New lines take the document's line break, so CRLF files stay CRLF.
+one-line value is replaced where it stands, keeping a comment after it on its
+line. A changed flow collection is edited by span, as `verified` is above:
+changed values are replaced and new entries go after the last one, so its
+unchanged entries and spacing stay; when an entry is removed, the collection
+is rewritten whole on one line, which also respells its unchanged entries. A
+changed `|` or `>` block scalar stays a literal block when its new value has a
+line break and a literal block holds it as written. A changed block mapping is
+edited entry by entry, and items added to the end of a block sequence go after
+its last item, in that item's style. A removed key removes only its own lines,
+and a new key goes directly after the last entry of its mapping. When the
+frontmatter and body come out equal to the current ones, the text is returned
+byte for byte. New lines take the document's line break, so CRLF files stay
+CRLF.
 
-Every result is parsed again and must read back as the requested mapping.
-When an in-place edit does not, okf re-emits the whole value of each changed
-top-level key, and failing that the whole mapping; it re-emits the whole
-mapping straight away for a one-line `{...}` mapping or one that uses YAML
-aliases or explicit `?` keys. The `rewriteSource` documentation lists every
-rule. `OkfYamlEmitter.scalar` returns the text a scalar is written as, so a
-host can predict how a value will look: `Revenue` and `finance-team` stay
-plain, while `2026-08-18`, `true` and `a: b` are written as JSON string
-literals such as `"2026-08-18"`. `serialize` still writes the canonical form
-`okf format` uses.
+Every result is parsed again and must read back as the requested mapping and
+body. When an in-place edit does not, or cannot be made, okf replaces the
+whole value of each changed top-level key, and failing that re-emits the whole
+mapping in canonical order, which moves keys such as `tags` and drops
+comments. An in-place edit cannot be made when it would remove the first key
+of a `- key: value` item, edit inside a block sequence that has a tag or
+anchor before its first `-`, or make two edits that overlap. The whole mapping
+is re-emitted straight away for a one-line `{...}` mapping, or one that uses
+YAML aliases, explicit `?` keys or collections as keys. The `rewriteSource`
+documentation lists every rule. A body-only document cannot get a body whose
+first line is `---`, which would read back as frontmatter; `rewriteSource`
+throws `OkfYamlEncodeException` instead.
+
+`OkfYamlEmitter.scalar` returns the text a scalar is written as, so a host can
+predict how a value will look: `Revenue` and `finance-team` stay plain, while
+`2026-08-18`, `true` and `a: b` are written as JSON string literals such as
+`"2026-08-18"`. A multi-line string is written that way too, with `\n`
+escapes, unless it replaces a block scalar that a literal block can keep.
+`serialize` still writes the canonical form `okf format` uses.
 
 Filesystem operations live in the separate `okf_io.dart` library:
 
