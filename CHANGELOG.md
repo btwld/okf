@@ -30,8 +30,8 @@
   assuming the body is a suffix of the file: line `n` of `body` is line
   `bodyStartLine + n - 1` of the source, whatever its line endings, byte order
   mark or blank lines around the frontmatter. Concepts loaded by
-  `OkfBundleLoader` carry it; documents built with the constructor or
-  `copyWith` have none.
+  `OkfBundleLoader` or read from an `OkfPreparedCandidate` carry it; documents
+  built with the constructor or `copyWith` have none.
 - Raise the minimum supported Dart SDK from 3.9 to 3.11 (#62).
 - Turn `OkfGraphResolution.fromWireValue` from a static method into a factory
   constructor (#65). Calls and tear-offs compile unchanged.

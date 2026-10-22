@@ -370,6 +370,46 @@ $_richBody''');
     expect(document.body, _richBody);
   });
 
+  test('candidate concepts record where their bodies start', () async {
+    final candidate =
+        (await changes.prepare(
+                  root.path,
+                  OkfBundleChangeSet(<OkfBundleChange>[
+                    ..._createChurn().changes,
+                    OkfUpdateConceptChange(
+                      id: OkfConceptId('metrics/revenue'),
+                      frontmatterChanges: const <String, Object?>{
+                        'status': 'stable',
+                      },
+                    ),
+                  ]),
+                )
+                as OkfPreparationReady)
+            .prepared
+            .candidate;
+
+    for (final (path, line, heading) in const <(String, int, String)>[
+      ('metrics/churn.md', 7, '# Churn'),
+      ('metrics/revenue.md', 8, '# Revenue'),
+    ]) {
+      expect(
+        candidate.concepts[path]!.split('\n')[line - 1],
+        heading,
+        reason: path,
+      );
+      expect(
+        candidate.toBundle().conceptAtPath(path)!.bodyStartLine,
+        line,
+        reason: path,
+      );
+      expect(
+        candidate.toLoadResult().documents[path]!.bodyStartLine,
+        line,
+        reason: path,
+      );
+    }
+  });
+
   test('unrelated authored indexes remain byte-identical', () async {
     const authored = '# Reference\n\n* [Note](note.md) - Hand ordered.\n';
     await _write(root, 'other/note.md', '''
