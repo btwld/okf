@@ -10,6 +10,7 @@ import 'index_generator.dart';
 import 'index_log.dart';
 import 'iso_date.dart';
 import 'link_path.dart';
+import 'yaml_emitter.dart';
 
 /// The bundle state and file texts an [OkfBundleChangeSet] would produce.
 ///
@@ -24,7 +25,9 @@ final class OkfBundleChangeOverlay {
   ///
   /// Throws [OkfBundleChangeException] when a change cannot be described
   /// against [base] at all — a distinct outcome from a change that describes
-  /// a bundle state the rules reject.
+  /// a bundle state the rules reject. A change whose concept the emitter
+  /// cannot write as YAML, such as one with a frontmatter string that holds
+  /// an unpaired surrogate, is such a change.
   factory OkfBundleChangeOverlay.of(
     OkfBundle base,
     OkfBundleChangeSet changes, {
@@ -47,12 +50,15 @@ final class OkfBundleChangeOverlay {
     final day = formatIsoDate(date);
 
     for (final change in changes.changes) {
-      final applied = _applyChange(documents, change, day);
+      final applied = _emitting(
+        change,
+        () => _applyChange(documents, change, day),
+      );
       if (applied == null) {
         continue;
       }
       final path = applied.id.documentPath;
-      final serialized = applied.document.serialize();
+      final serialized = _emitting(change, applied.document.serialize);
       documents[applied.id] = OkfDocument.parse(serialized, sourcePath: path);
       files[path] = serialized;
       logEntries.add(applied.entry);
@@ -108,6 +114,24 @@ final class OkfBundleChangeOverlay {
 
   /// Desired file texts keyed by bundle-relative path.
   final Map<String, String> files;
+}
+
+/// Runs [emit] for [change], turning a concept the emitter cannot write as
+/// YAML into the change's tool error.
+T _emitting<T>(OkfBundleChange change, T Function() emit) {
+  try {
+    return emit();
+  } on OkfYamlEncodeException catch (error) {
+    final id = switch (change) {
+      OkfCreateConceptChange(:final id) ||
+      OkfUpdateConceptChange(:final id) ||
+      OkfDeprecateConceptChange(:final id) => id,
+      OkfLinkConceptsChange(:final source) => source,
+    };
+    throw OkfBundleChangeException(
+      'Concept ${id.value} cannot be written. ${error.message}',
+    );
+  }
 }
 
 /// Interprets one change against [documents], or returns `null` when the

@@ -174,6 +174,33 @@ void main() {
       expect(await root.list().isEmpty, isTrue);
     });
 
+    test('refuses frontmatter YAML cannot represent', () async {
+      // The emitter would write the surrogate as a `\ud800` escape, which the
+      // loader rejects, so the written concept would not load.
+      final root = Directory(p.join(sandbox.path, 'missing'));
+      final document = OkfDocument(
+        frontmatter: <String, Object?>{
+          'type': 'Reference',
+          'title': 'Example \uD800',
+        },
+        body: '# Example\n',
+      );
+
+      for (final checkOnly in <bool>[false, true]) {
+        await expectLater(
+          const OkfBundleWriter().writeDocument(
+            root.path,
+            'example.md',
+            document,
+            checkOnly: checkOnly,
+          ),
+          throwsA(isA<OkfYamlEncodeException>()),
+          reason: 'checkOnly: $checkOnly',
+        );
+      }
+      expect(await root.exists(), isFalse);
+    });
+
     test('transactional writes restore the exact original bytes', () async {
       final root = await Directory(p.join(sandbox.path, 'bundle')).create();
       final original = File(p.join(root.path, 'a.md'));

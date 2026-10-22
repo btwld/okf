@@ -191,6 +191,45 @@ One row per order.
       );
     });
 
+    test('rejects strings that hold an unpaired surrogate', () {
+      // jsonEncode would write a `\ud800` escape, which YAML parsers reject,
+      // so the serialized document would not load.
+      for (final frontmatter in <Map<String, Object?>>[
+        {'type': 'Reference', 'title': 'lead \uD800 alone'},
+        {'type': 'Reference', 'title': 'trail \uDC00 alone'},
+        {
+          'type': 'Reference',
+          'sources': <Object?>[
+            <String, Object?>{'resource': 'a.md', 'relationship': 'r \uD800'},
+          ],
+        },
+        {'type': 'Reference', 'key \uD800': 'value'},
+      ]) {
+        expect(
+          () => OkfDocument(frontmatter: frontmatter).serialize(),
+          throwsA(
+            isA<OkfYamlEncodeException>().having(
+              (error) => error.message,
+              'message',
+              contains('unpaired surrogate'),
+            ),
+          ),
+          reason: '$frontmatter',
+        );
+      }
+
+      final paired = OkfDocument(
+        frontmatter: <String, Object?>{
+          'type': 'Reference',
+          'title': 'paired 😀',
+        },
+      );
+      expect(
+        OkfDocument.parse(paired.serialize()).frontmatter,
+        paired.frontmatter,
+      );
+    });
+
     test('round-trips nested source and verification structures', () {
       const source = '''
 ---

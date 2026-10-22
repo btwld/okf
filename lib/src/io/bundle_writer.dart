@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import '../bundle_path.dart';
 import '../document.dart';
 import '../utf8_text.dart';
+import '../yaml_emitter.dart';
 import 'bundle_lock.dart';
 
 /// The outcome of writing or checking a set of bundle files.
@@ -54,18 +55,23 @@ final class OkfWriteRollbackException implements Exception {
 /// is not being concurrently replaced by an adversarial process.
 ///
 /// Files are written as UTF-8, so [writeAll] refuses a text that holds an
-/// unpaired surrogate, which UTF-8 cannot encode.
+/// unpaired surrogate, which UTF-8 cannot encode, and [writeDocument] refuses
+/// frontmatter that holds one.
 final class OkfBundleWriter {
   /// Creates a bundle writer.
   const OkfBundleWriter();
 
   /// Serializes and writes [document] beneath [rootPath].
+  ///
+  /// Frontmatter the YAML emitter cannot represent, such as a string that
+  /// holds an unpaired surrogate, fails with [OkfYamlEncodeException] before
+  /// the filesystem is touched.
   Future<OkfWriteResult> writeDocument(
     String rootPath,
     String relativePath,
     OkfDocument document, {
     bool checkOnly = false,
-  }) => writeAll(rootPath, <String, String>{
+  }) async => writeAll(rootPath, <String, String>{
     relativePath: document.serialize(),
   }, checkOnly: checkOnly);
 

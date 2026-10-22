@@ -99,7 +99,8 @@ final class OkfBundleChangeApplier {
   /// A text that UTF-8 cannot encode, because it holds an unpaired surrogate,
   /// also throws [OkfBundleChangeException], whether the change set or the
   /// projection produced it: writing it would commit other bytes than the
-  /// ones validated.
+  /// ones validated. So does a change whose frontmatter holds such a string,
+  /// which the YAML emitter cannot represent.
   Future<OkfBundlePreparation> prepare(
     String rootPath,
     OkfBundleChangeSet changes, {

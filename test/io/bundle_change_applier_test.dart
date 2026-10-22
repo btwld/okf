@@ -575,6 +575,65 @@ title: Note
     expect(await _snapshot(root), before);
   });
 
+  test('frontmatter YAML cannot represent is a tool error', () async {
+    final before = await _snapshot(root);
+    final revenue = OkfConceptId('metrics/revenue');
+
+    // The emitter cannot write an unpaired surrogate, so each change names
+    // the concept it would have written instead of failing to read it back.
+    for (final (concept, change) in <(String, OkfBundleChange)>[
+      (
+        'metrics/churn',
+        OkfCreateConceptChange(
+          id: OkfConceptId('metrics/churn'),
+          document: OkfDocument(
+            frontmatter: <String, Object?>{
+              'type': 'Metric',
+              'title': 'Churn \uD800',
+            },
+            body: '# Churn\n',
+          ),
+        ),
+      ),
+      (
+        'metrics/revenue',
+        OkfUpdateConceptChange(
+          id: revenue,
+          frontmatterChanges: <String, Object?>{'title': 'Revenue \uDC00'},
+        ),
+      ),
+      (
+        'metrics/revenue',
+        OkfLinkConceptsChange(
+          source: revenue,
+          target: OkfConceptId('metrics/margin'),
+          relationship: 'relates \uD800 to',
+        ),
+      ),
+    ]) {
+      for (final run in <Future<Object?> Function()>[
+        () => changes.prepare(root.path, OkfBundleChangeSet([change])),
+        () => changes.apply(root.path, OkfBundleChangeSet([change])),
+      ]) {
+        await expectLater(
+          run(),
+          throwsA(
+            isA<OkfBundleChangeException>().having(
+              (error) => error.message,
+              'message',
+              allOf(
+                contains('Concept $concept cannot be written'),
+                contains('unpaired surrogate'),
+              ),
+            ),
+          ),
+          reason: '${change.runtimeType}',
+        );
+      }
+    }
+    expect(await _snapshot(root), before);
+  });
+
   group('reserved-file projection', () {
     const projectedIndex =
         '# Metric\n'

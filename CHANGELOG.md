@@ -21,6 +21,14 @@
   and `writeDocument`, which `okf format` and `okf index` write through, now
   throw `ArgumentError` for such a text in check mode too, before touching the
   filesystem.
+- Throw `OkfYamlEncodeException` from `OkfYamlEmitter.emit`, and so from
+  `OkfDocument.serialize`, for a frontmatter string that holds an unpaired
+  surrogate. The emitter used to write it as a `\ud800` escape that YAML
+  parsers reject, so `OkfBundleWriter.writeDocument` wrote a concept that
+  failed to load. `writeDocument` now fails before touching the filesystem,
+  reporting this like every other failure through its future, and `prepare`
+  throws `OkfBundleChangeException` for a change whose frontmatter the
+  emitter cannot write, such as one that holds such a string.
 - Add `OkfPreparedCandidate.toLoadResult()`, a new public method that reads
   a candidate as a later load of the committed bundle would, retaining load
   findings for source files the candidate does not replace, so downstream
