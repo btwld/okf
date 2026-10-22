@@ -4,7 +4,6 @@ import 'package:ack/ack.dart';
 import 'package:ack_annotations/ack_annotations.dart';
 import 'package:yaml/yaml.dart';
 
-import 'frontmatter_rewriter.dart';
 import 'metadata.dart';
 import 'yaml_data.dart';
 import 'yaml_emitter.dart';
@@ -232,9 +231,10 @@ final class OkfDocument {
   /// The exact text this document was parsed from, or null for a document
   /// built with the constructor or [copyWith].
   ///
-  /// It is what [rewriteSource] edits. Mutating [frontmatter] afterwards does
-  /// not change it. A parsed document holds this text besides its [body], so
-  /// a loaded bundle keeps each concept's text about twice.
+  /// Update, link and deprecate changes edit this text in place rather than
+  /// write the document anew. Mutating [frontmatter] afterwards does not
+  /// change it. A parsed document holds this text besides its [body], so a
+  /// loaded bundle keeps each concept's text about twice.
   final String? sourceText;
 
   /// The one-based line of the parsed source on which [body] begins, or null
@@ -291,8 +291,7 @@ final class OkfDocument {
   /// Returns a copy with selected document parts replaced.
   ///
   /// The copy has no source text, so its [sourceText] and [bodyStartLine]
-  /// are null. Use [rewriteSource] to change a parsed document's text
-  /// without rewriting the parts that stay the same.
+  /// are null.
   OkfDocument copyWith({
     Map<String, Object?>? frontmatter,
     String? body,
@@ -330,128 +329,6 @@ final class OkfDocument {
   /// Alias for [serialize].
   String toMarkdown({OkfYamlEmitter emitter = const OkfYamlEmitter()}) =>
       serialize(emitter: emitter);
-
-  /// Returns [sourceText] edited so that it parses to [frontmatter] and,
-  /// unless [body] is null, to [body], keeping the exact bytes of everything
-  /// the edit does not change.
-  ///
-  /// [frontmatter] is the complete resulting mapping and defaults to this
-  /// document's [frontmatter]; a key it lacks is removed. This document is
-  /// not changed. Values compare as YAML data: mappings without regard to
-  /// key order, an integer never equals a double, and a [DateTime] is the
-  /// string of its `toIso8601String()`, which is how it is written.
-  ///
-  /// The frontmatter is edited in place:
-  ///
-  /// * A key whose value is unchanged keeps its bytes: its position, flow or
-  ///   block style, quoting, comments and the blank lines around it.
-  /// * A changed one-line scalar is replaced by its span. Whatever else
-  ///   shares the line, such as a trailing comment, stays.
-  /// * A changed literal (`|`) or folded (`>`) block scalar whose new value
-  ///   is a string with a line break is written as a literal block at the
-  ///   old block's indentation, keeping any comment on its header line: `|-`
-  ///   for a string without a final line break, `|` for one, and `|+` for
-  ///   more. A string without a line break is written as any other changed
-  ///   value, and so is one that a literal block does not hold as written:
-  ///   one whose first line is empty or starts with whitespace, that has a
-  ///   line reading as a `---` delimiter, or that holds a C0 control
-  ///   character other than tab and line feed, DEL, a C1 control character,
-  ///   U+2028, U+2029, U+FEFF, U+FFFE, U+FFFF or an unpaired surrogate.
-  /// * A changed flow collection stays a flow collection. A flow mapping
-  ///   that keeps every key, or a flow sequence that does not get shorter,
-  ///   has each changed value or item replaced by its span by these rules,
-  ///   and each new entry, or each item past its old length, inserted
-  ///   directly after the last one, after `, `; the rest of its text,
-  ///   spacing and line breaks included, stays. Otherwise the
-  ///   whole collection is replaced by its span with one line such as
-  ///   `[a, b]` or `{key: value}`, which writes its unchanged entries in
-  ///   [OkfYamlEmitter.scalar] spellings too. That also happens when a value
-  ///   to replace is omitted (`{key}`) or spans lines, and when entries are
-  ///   added after a last value that is omitted or is a plain scalar over
-  ///   several lines.
-  /// * A changed block mapping is edited entry by entry, by these same rules.
-  ///   A changed block sequence whose old items are a prefix of its new ones
-  ///   gets the new items after its last item, in that item's style
-  ///   (`- key: value`, or `-` on a line of its own); one whose length is
-  ///   unchanged has each changed item edited by these rules.
-  /// * Any other changed value is written after its key, replacing the old
-  ///   value through the end of its last line, comments included: a scalar
-  ///   or an empty collection as `key: <scalar>`, `key: []` or `key: {}`,
-  ///   and a collection in the block style [OkfYamlEmitter.emit] uses.
-  /// * A removed key removes only its own lines, from its key's line to its
-  ///   value's last. Comment and blank lines around it stay.
-  /// * A new key goes on the lines directly after the last entry of its
-  ///   mapping, before any comment or blank lines that end the mapping, at
-  ///   the indentation of the mapping's keys and in the order [frontmatter]
-  ///   lists the new keys. In a frontmatter block with no entries it goes
-  ///   directly before the closing `---`.
-  ///
-  /// Other than in those literal blocks, scalars and keys are written as
-  /// [OkfYamlEmitter.scalar] writes them. New lines end with the line break
-  /// of the document's first line, so a CRLF document stays CRLF, and the
-  /// delimiter lines are kept.
-  ///
-  /// A [body] equal to this document's body once line endings are
-  /// normalized and a final newline is added keeps the current bytes; any
-  /// other is written in that canonical form, after one blank line, with the
-  /// document's line break. So when the resulting frontmatter equals the
-  /// current one the frontmatter block is byte-identical, and so is the whole
-  /// text when the body is unchanged too.
-  ///
-  /// A byte order mark that begins the text stays there. With a frontmatter
-  /// block it comes before the opening `---`. A document without one holds
-  /// the mark in its [body], as [OkfDocument.parse] reads it: it stays with
-  /// that body, goes before the `---` of a block this call adds (the body
-  /// then reads back without it), and goes with the body that [body]
-  /// replaces.
-  ///
-  /// Every result is parsed again and must read back as [frontmatter] and
-  /// the expected body. The edit is made in up to three ways, and the first
-  /// whose result reads back is returned:
-  ///
-  /// 1. In place, by all the rules above.
-  /// 2. In place at the top level only: each changed top-level value is
-  ///    replaced whole, by its span when it is a one-line scalar or a flow
-  ///    collection and otherwise after its key as for any other changed
-  ///    value, with every scalar written as [OkfYamlEmitter.scalar] writes
-  ///    it.
-  /// 3. Re-emitted: [OkfYamlEmitter.emit] writes the whole mapping between
-  ///    the existing delimiter lines, in the emitter's canonical order
-  ///    ([OkfYamlEmitter.preferredTopLevelKeys] first), so keys such as
-  ///    `tags` move and comments inside the block are dropped.
-  ///
-  /// Step 1 gives up without a result, and step 2 runs, when it would remove
-  /// the first key of a `- key: value` item, whose line holds the item's
-  /// `-`; when a changed block sequence has a tag or anchor before its first
-  /// `-`, where its span begins; or when two of its edits would overlap.
-  /// Step 2 gives up for overlapping edits too. Step 3 runs without the
-  /// others when the frontmatter is not a block mapping (for example a
-  /// one-line `{type: Metric}`), uses a YAML alias, has a collection as a
-  /// key at any depth, or has a key in a block mapping with anything but
-  /// indentation and `-` indicators before it on its line, that is, an
-  /// explicit `?` key. (A tag or anchor written before a key, as in
-  /// `- !tag key: value`, starts that key's span, so it does not count.)
-  ///
-  /// Throws [OkfYamlEncodeException] when a value cannot be written as
-  /// YAML, when even step 3 does not read back, or when a document without
-  /// a frontmatter block would get a body whose first line reads as a `---`
-  /// delimiter, which would read back as the start of one.
-  ///
-  /// A document without a frontmatter block gets one in front of its text
-  /// when [frontmatter] is not empty. A document without [sourceText] is
-  /// written as [serialize] writes it, and checked the same way.
-  String rewriteSource({
-    Map<String, Object?>? frontmatter,
-    String? body,
-    OkfYamlEmitter emitter = const OkfYamlEmitter(),
-  }) => rewriteOkfDocumentSource(
-    sourceText,
-    frontmatter ?? this.frontmatter,
-    body: body,
-    currentBody: this.body,
-    hasFrontmatter: hasFrontmatter,
-    emitter: emitter,
-  );
 
   /// Entries from a legacy v0.1 top-level `# Citations` section.
   List<OkfLegacyCitation> get legacyCitations {

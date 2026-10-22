@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:okf/okf.dart';
+import 'package:okf/src/yaml_emitter.dart' show okfYamlScalar;
 import 'package:test/test.dart';
 import 'package:yaml/yaml.dart';
 
 void main() {
-  group('OkfYamlEmitter.scalar', () {
+  group('okfYamlScalar', () {
     const emitter = OkfYamlEmitter();
 
     test('writes safe strings plain and quotes the rest as JSON', () {
@@ -27,22 +30,22 @@ void main() {
       };
 
       for (final MapEntry(key: value, value: text) in expected.entries) {
-        expect(emitter.scalar(value), text, reason: value);
-        expect(loadYaml('key: ${emitter.scalar(value)}'), <String, Object?>{
+        expect(okfYamlScalar(value), text, reason: value);
+        expect(loadYaml('key: ${okfYamlScalar(value)}'), <String, Object?>{
           'key': value,
         }, reason: value);
       }
     });
 
     test('writes other scalars by type', () {
-      expect(emitter.scalar(null), 'null');
-      expect(emitter.scalar(true), 'true');
-      expect(emitter.scalar(42), '42');
-      expect(emitter.scalar(1.5), '1.5');
-      expect(emitter.scalar(double.nan), '.nan');
-      expect(emitter.scalar(double.negativeInfinity), '-.inf');
+      expect(okfYamlScalar(null), 'null');
+      expect(okfYamlScalar(true), 'true');
+      expect(okfYamlScalar(42), '42');
+      expect(okfYamlScalar(1.5), '1.5');
+      expect(okfYamlScalar(double.nan), '.nan');
+      expect(okfYamlScalar(double.negativeInfinity), '-.inf');
       expect(
-        emitter.scalar(DateTime.utc(2026, 8, 18, 12)),
+        okfYamlScalar(DateTime.utc(2026, 8, 18, 12)),
         '"2026-08-18T12:00:00.000Z"',
       );
     });
@@ -51,19 +54,28 @@ void main() {
       for (final value in <Object?>['Revenue', 'a: b', 7, null, false]) {
         expect(
           emitter.emit(<String, Object?>{'key': value}),
-          'key: ${emitter.scalar(value)}',
+          'key: ${okfYamlScalar(value)}',
         );
       }
     });
 
     test('rejects collections', () {
       expect(
-        () => emitter.scalar(const <Object?>['a']),
+        () => okfYamlScalar(const <Object?>['a']),
         throwsA(isA<OkfYamlEncodeException>()),
       );
       expect(
-        () => emitter.scalar(const <String, Object?>{}),
+        () => okfYamlScalar(const <String, Object?>{}),
         throwsA(isA<OkfYamlEncodeException>()),
+      );
+    });
+
+    test('stays out of the public library', () {
+      // Its spelling is not a contract: hosts read the text a change writes
+      // instead of predicting it (ADR-0010).
+      expect(
+        File('lib/okf.dart').readAsStringSync(),
+        contains("export 'src/yaml_emitter.dart' hide okfYamlScalar;"),
       );
     });
   });

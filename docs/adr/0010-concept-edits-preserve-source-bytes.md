@@ -16,16 +16,15 @@ line move.
 
 ## Decision
 
-Update, link and deprecate changes edit an existing concept's text through
-`OkfDocument.rewriteSource`. It locates each entry by `package:yaml` source
-spans and rewrites only what the change alters. New concepts, `serialize` and
-`okf format` keep the canonical form.
+Update, link and deprecate changes edit an existing concept's text,
+`OkfDocument.sourceText`, through a package-internal rewriter. It locates each
+entry by `package:yaml` source spans and rewrites only what the change alters.
+New concepts, `serialize` and `okf format` keep the canonical form.
 
 - Unchanged keys keep their bytes. A changed value is replaced where it
   stands, a block mapping is edited entry by entry, and a flow collection by
   span while it keeps its entries. A block scalar stays a literal block when
-  its new value has a line break. Other values take the emitter's spelling,
-  which `OkfYamlEmitter.scalar` exposes so hosts can predict it.
+  its new value has a line break. Other values take the emitter's spelling.
 - A new key goes directly after the last entry of its mapping, not at its
   place in the preferred key order: reordering would move lines the change
   did not touch.
@@ -39,6 +38,11 @@ spans and rewrites only what the change alters. New concepts, `serialize` and
   the existing delimiters. Frontmatter whose spans cannot locate an entry (a
   flow root, aliases, explicit `?` keys, collection keys) goes straight to the
   last step. A result that no step can make read back is a tool error.
+- The rewriter and the emitter's scalar spelling stay package-internal:
+  `okf.dart` exports neither. Publishing them would freeze okf's layout rules
+  and quoting as a contract no consumer needs. A host that previews or scans a
+  change reads the candidate's text instead. `OkfDocument.sourceText` is
+  public, since it is only the text a document was parsed from.
 
 ## Consequences
 

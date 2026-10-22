@@ -6,6 +6,7 @@ import 'bundle.dart';
 import 'bundle_change_set.dart';
 import 'concept_id.dart';
 import 'document.dart';
+import 'frontmatter_rewriter.dart';
 import 'index_generator.dart';
 import 'index_log.dart';
 import 'iso_date.dart';
@@ -138,7 +139,7 @@ T _emitting<T>(OkfBundleChange change, T Function() emit) {
 /// The returned document is parsed from the text the change writes, which is
 /// its [OkfDocument.sourceText]. A new concept is written in canonical form;
 /// a change to an existing one edits its text in place through
-/// [OkfDocument.rewriteSource].
+/// [OkfDocumentSourceRewrite.rewriteSource].
 ({OkfConceptId id, OkfDocument document, OkfLogEntry entry, bool affectsIndex})?
 _applyChange(
   Map<OkfConceptId, OkfDocument> documents,
@@ -271,7 +272,7 @@ String _indexValue(Object? value, {String? fallback}) =>
 /// the edited document, or `null` when its text would not change.
 ///
 /// The text is edited in place, so every byte the change does not touch is
-/// kept; see [OkfDocument.rewriteSource].
+/// kept; see [OkfDocumentSourceRewrite.rewriteSource].
 OkfDocument? _edited(
   OkfConceptId id,
   OkfDocument document,

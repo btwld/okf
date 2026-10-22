@@ -24,15 +24,11 @@
   whose first line is `---`, throws `OkfBundleChangeException` from
   `prepare`. New concepts, `serialize` and `okf format` keep the canonical
   form. See ADR-0010.
-- Add `OkfDocument.rewriteSource`, which performs that edit on any parsed
-  document, and `OkfDocument.sourceText`, the text it edits: the exact text
-  given to `OkfDocument.parse`, or `null` for a document built with the
-  constructor or `copyWith`.
-- Add `OkfYamlEmitter.scalar`, which returns the text a scalar is written as,
-  by `emit` and by `rewriteSource` alike, so a host can predict how a string
-  value will look: plain when it is unambiguous, otherwise its JSON string
-  literal. `rewriteSource` departs from it only to keep a multi-line string
-  in a literal block it replaces.
+- Add `OkfDocument.sourceText`, the exact text given to `OkfDocument.parse`,
+  or `null` for a document built with the constructor or `copyWith`. It is
+  the text update, link and deprecate changes edit. The rewriter that makes
+  those edits, and the emitter's spelling of the scalars they write, stay
+  package-internal; a host reads what a change writes from its candidate.
 
 ## 0.5.1
 

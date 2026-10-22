@@ -46,8 +46,10 @@ final class OkfCreateConceptChange extends OkfBundleChange {
 ///
 /// The concept's text is edited in place: frontmatter keys the change does
 /// not alter keep their exact bytes, and so does the body unless [body]
-/// replaces it. [OkfDocument.rewriteSource] states the rules. An update that
-/// leaves the concept's frontmatter and body as they are writes nothing.
+/// replaces it. A changed value is replaced where it stands, a removed key
+/// loses only its own lines, and a new key goes after the last entry of its
+/// mapping; ADR-0010 records the policy. An update that leaves the concept's
+/// frontmatter and body as they are writes nothing.
 final class OkfUpdateConceptChange extends OkfBundleChange {
   /// Creates an update-change description.
   OkfUpdateConceptChange({
@@ -73,7 +75,7 @@ final class OkfUpdateConceptChange extends OkfBundleChange {
 ///
 /// The link is appended to the source concept's `sources` list in place,
 /// after its last item and in that item's style, or added as a new
-/// `sources` key; see [OkfDocument.rewriteSource].
+/// `sources` key.
 final class OkfLinkConceptsChange extends OkfBundleChange {
   /// Creates a link-change description.
   ///
@@ -105,8 +107,7 @@ final class OkfLinkConceptsChange extends OkfBundleChange {
 
 /// A request to deprecate an existing concept.
 ///
-/// Its `status` is set to `deprecated` in place, or added as a new key; see
-/// [OkfDocument.rewriteSource].
+/// Its `status` is set to `deprecated` in place, or added as a new key.
 final class OkfDeprecateConceptChange extends OkfBundleChange {
   /// Creates a deprecation-change description.
   const OkfDeprecateConceptChange({required this.id, this.note});

@@ -1,9 +1,24 @@
+import 'dart:io';
+
 import 'package:okf/okf.dart';
+import 'package:okf/src/frontmatter_rewriter.dart';
 import 'package:test/test.dart';
 import 'package:yaml/yaml.dart';
 
 void main() {
-  group('OkfDocument.rewriteSource', () {
+  test('the rewriter stays out of the public libraries', () {
+    // Its layout rules are not a contract: hosts read the text a change
+    // writes from its candidate (ADR-0010).
+    for (final library in <String>['lib/okf.dart', 'lib/okf_io.dart']) {
+      expect(
+        File(library).readAsStringSync(),
+        isNot(contains('frontmatter_rewriter')),
+        reason: library,
+      );
+    }
+  });
+
+  group('OkfDocumentSourceRewrite.rewriteSource', () {
     test('returns the source unchanged when nothing changes', () {
       for (final MapEntry(key: name, value: source) in _fixtures.entries) {
         final document = OkfDocument.parse(source);
