@@ -106,10 +106,13 @@ final class OkfBundleChangeApplier {
   /// ones validated. So does a change whose frontmatter holds such a string,
   /// which the YAML emitter cannot represent.
   ///
-  /// Prepared texts are decoded text, which never holds the UTF-8 byte order
-  /// mark a file may begin with. A file that began with one keeps it when the
-  /// commit rewrites the file: a concept and an `index.md` or `log.md` alike,
-  /// whether the change set or [project] wrote its new text.
+  /// Prepared texts are decoded text: loading drops one UTF-8 byte order
+  /// mark that begins a file, and a text holds what is left. So the commit
+  /// writes a mark before a text when the file began with one, keeping it
+  /// for a concept and an `index.md` or `log.md` alike, whether the change
+  /// set or [project] wrote the new text. It also writes one before a text
+  /// that itself begins with U+FEFF, which is then content after the mark.
+  /// Either way, the committed file loads as exactly the text validated.
   Future<OkfBundlePreparation> prepare(
     String rootPath,
     OkfBundleChangeSet changes, {
@@ -184,8 +187,10 @@ final class OkfBundleChangeApplier {
           source: sourceAfter.withoutText(),
           changedFiles: changedFiles,
           byteOrderMarkPaths: <String>{
-            for (final path in changedFiles.keys)
-              if (sourceAfter.startsWithByteOrderMark(path)) path,
+            for (final MapEntry(key: path, value: text) in changedFiles.entries)
+              if (sourceAfter.startsWithByteOrderMark(path) ||
+                  text.startsWith(_byteOrderMark))
+                path,
           },
         ),
       ),
@@ -201,9 +206,12 @@ final class OkfBundleChangeApplier {
 /// prepared for that path; `null` keeps the source bundle's text, or its
 /// absence. Paths the result does not name keep the change set's text.
 ///
-/// Texts are decoded text without the UTF-8 byte order mark, as
+/// Texts are decoded text without the file's UTF-8 byte order mark, as
 /// [OkfProjectionInput.base] holds them. A reserved file that began with one
-/// keeps it when the commit writes the projected text, as a concept does.
+/// keeps it when the commit writes the projected text, as a concept does, so
+/// a projection does not add one. A projected text that begins with U+FEFF
+/// holds it as content: the commit writes a mark before it, which loading
+/// drops, so the file loads as the projected text.
 ///
 /// The change set regenerates every ancestor index of a directory it adds,
 /// and the Spec validator does not check where index links lead. Returning
@@ -573,8 +581,10 @@ final class _PreparedCommitPlan {
   final _BundleSnapshot source;
   final Map<String, String> changedFiles;
 
-  /// Changed files whose source began with a UTF-8 byte order mark, which
-  /// decoding dropped from their text and the commit writes back.
+  /// Changed files the commit writes after a UTF-8 byte order mark: those
+  /// whose source began with one, which decoding dropped from their text,
+  /// and those whose text begins with U+FEFF, which loading would otherwise
+  /// drop.
   final Set<String> byteOrderMarkPaths;
 }
 

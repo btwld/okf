@@ -1074,6 +1074,43 @@ owner: finance-team
         ...utf8.encode(edited),
       ]);
     });
+
+    test(
+      'a concept that begins with two byte order marks keeps both',
+      () async {
+        const mark = <int>[0xEF, 0xBB, 0xBF];
+        final file = File(p.join(root.path, 'metrics', 'revenue.md'));
+        await file.writeAsBytes(<int>[
+          ...mark,
+          ...mark,
+          ...utf8.encode(
+            '---\ntype: Metric\ntitle: Revenue\n---\n\n# Revenue\n',
+          ),
+        ]);
+
+        // Loading drops the first mark, so the text the rewriter edits begins
+        // with the second, which stays content in front of the `---`.
+        final preparation = await changes.prepare(
+          root.path,
+          OkfBundleChangeSet(<OkfBundleChange>[
+            OkfDeprecateConceptChange(id: OkfConceptId('metrics/revenue')),
+          ]),
+        );
+        final prepared = (preparation as OkfPreparationReady).prepared;
+        const edited =
+            '\uFEFF---\ntype: Metric\ntitle: Revenue\nstatus: deprecated\n'
+            '---\n\n# Revenue\n';
+        expect(prepared.candidate.concepts['metrics/revenue.md'], edited);
+        await changes.commit(prepared);
+
+        expect(await file.readAsBytes(), <int>[
+          ...mark,
+          ...utf8.encode(edited),
+        ]);
+        final reloaded = await const OkfBundleLoader().inspect(root.path);
+        expect(reloaded.documents['metrics/revenue.md']!.sourceText, edited);
+      },
+    );
   });
 
   group('reserved-file projection', () {
@@ -1217,6 +1254,47 @@ owner: finance-team
         expect(reloaded.logs['log.md'], log);
       }
     });
+
+    test(
+      'a projected text that begins with U+FEFF loads as that text',
+      () async {
+        const mark = <int>[0xEF, 0xBB, 0xBF];
+        const text = '\uFEFF$projectedIndex';
+        // Loading drops one mark, so the commit writes one before a text that
+        // begins with U+FEFF, as well as the mark the file began with: the
+        // file then loads as the text that was validated, with or without it.
+        for (final sourceMark in <bool>[false, true]) {
+          await _seedBundle(root);
+          final index = File(p.join(root.path, 'metrics', 'index.md'));
+          if (sourceMark) {
+            await index.writeAsBytes(<int>[
+              ...mark,
+              ...await index.readAsBytes(),
+            ]);
+          }
+
+          final preparation = await changes.prepare(
+            root.path,
+            OkfBundleChangeSet(const <OkfBundleChange>[]),
+            project: (_) => <String, String?>{'metrics/index.md': text},
+          );
+          final prepared = (preparation as OkfPreparationReady).prepared;
+          expect(prepared.candidate.indexes['metrics/index.md'], text);
+          await changes.commit(prepared);
+
+          expect(await index.readAsBytes(), <int>[
+            ...mark,
+            ...utf8.encode(text),
+          ], reason: 'source mark: $sourceMark');
+          final reloaded = await const OkfBundleLoader().inspect(root.path);
+          expect(
+            reloaded.indexes['metrics/index.md'],
+            text,
+            reason: 'source mark: $sourceMark',
+          );
+        }
+      },
+    );
 
     test('null keeps the source text or its absence', () async {
       final sourceLog = await _read(root, 'log.md');

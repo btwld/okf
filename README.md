@@ -370,9 +370,11 @@ than an `index.md` or `log.md` throws `OkfBundleChangeException`. `apply`
 takes the same `project` argument, and the refusals of both `prepare` and
 `apply` carry the projected candidate. Dropping the `index.md` of a directory
 the change adds leaves its regenerated ancestors linking to it, so project
-those too. Projected texts carry no UTF-8 byte order mark; a reserved file
-that began with one keeps it, as a concept does. With no changes, a
-projection repairs reserved files on its own:
+those too. A reserved file that began with a UTF-8 byte order mark keeps it,
+as a concept does, so projected texts leave it out. A projected text that
+begins with U+FEFF holds it as content: the commit writes a mark before it,
+so the file loads back as the projected text. With no changes, a projection
+repairs reserved files on its own:
 
 ```dart
 final repair = await writer.prepare(

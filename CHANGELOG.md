@@ -30,9 +30,12 @@
   `okf format` keep the canonical form. See ADR-0010.
 - Keep the UTF-8 byte order mark of every file a commit rewrites. A concept,
   `index.md` or `log.md` file that began with one keeps it, whether the
-  change set or a reserved-file projection wrote its new text. The texts a
-  candidate holds never include the mark, so a projection returns texts
-  without it. In 0.5.1 every rewritten file lost its mark.
+  change set or a reserved-file projection wrote its new text. Loading drops
+  one leading mark, so a candidate's texts never include the file's own and a
+  projection returns texts without it. A text that does begin with U+FEFF
+  holds it as content: the commit writes a mark before it, so the file loads
+  as the text that was validated. In 0.5.1 every rewritten file lost its
+  mark, and such a text lost its leading U+FEFF on the next load.
 - Add `OkfDocument.sourceText`, the exact text given to `OkfDocument.parse`,
   or `null` for a document built with the constructor or `copyWith`. It is
   the text update, link and deprecate changes edit. The rewriter that makes
