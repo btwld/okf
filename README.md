@@ -211,7 +211,9 @@ okf operation on a bundle â€” loads, validation, graphs, formatting and writes â
 in one isolate per process.** `okf_io.dart` exports `OkfBundleLock` so
 applications can run their own reads and writes under the same claims;
 `OkfBundleLock.write` held around `prepare` and `commit` keeps the source from
-changing between them.
+changing between them. Await every bundle operation inside the action you pass
+it: work that outlives the action, such as an unawaited future, still counts as
+holding the claim while no lock is held.
 
 ## Library
 

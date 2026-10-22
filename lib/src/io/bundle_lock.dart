@@ -19,7 +19,11 @@ const String okfBundleLockFileName = '.okf.lock';
 /// The loader, writer and change applier already take these claims; callers
 /// use them directly to run their own reads or writes under the same lock.
 /// Claims nest: an action may run further operations on the same bundle, and
-/// a shared claim cannot be upgraded to an exclusive one.
+/// a shared claim cannot be upgraded to an exclusive one. A claim is carried
+/// by the action's zone, so await every bundle operation inside the action:
+/// work that outlives it, such as an unawaited future, a timer or a stream
+/// listener, still counts as holding the claim, so it skips the queue while
+/// no lock is held.
 ///
 /// On POSIX the lock is an `fcntl` record lock, which belongs to the process
 /// rather than to an isolate. Isolates in one process do not exclude each

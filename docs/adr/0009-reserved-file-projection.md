@@ -37,6 +37,16 @@ Concepts stay out of reach: the overlay remains their only writer, so the
 lossless round trip and the log entries that describe concept changes keep
 one owner.
 
+`okf_io.dart` exports `OkfBundleLock`, so a caller can hold `write` around
+`prepare` and `commit` and keep the source from changing between them. The
+lock stays the advisory `fcntl` record lock on `<root>/.okf.lock` that okf
+has taken since 0.4.0, so processes running any of those releases still
+exclude each other. That lock belongs to the process, not to an isolate:
+isolates in one process do not exclude each other, and closing any descriptor
+of the lock file drops every claim the process holds on it. Every okf
+operation on a bundle therefore runs on one isolate per process, where the
+isolate-local queue orders them and the lock file excludes other processes.
+
 `okfIndexGeneratorRevision` names the release that last changed
 `OkfIndexGenerator`'s output bytes. Generator output changes only in a minor
 release, which bumps the revision; patch releases never change it.
@@ -48,6 +58,10 @@ release, which bumps the revision; patch releases never change it.
 - A projection is caller code running inside preparation. It must not write
   the bundle, and preparation is unlocked unless the caller holds
   `OkfBundleLock.write`, which `okf_io.dart` now exports.
+- An application that reaches a bundle from several isolates must route every
+  load, validation, graph, format and write through one isolate per process.
+  okf cannot enforce this, and breaking it can silently drop another
+  isolate's write lock.
 - Consumers pin `okfIndexGeneratorRevision` instead of a patch range, so a
   patch release of okf cannot change their expected indexes.
 - `okfVersion` reports the package version to such consumers; it is not the
