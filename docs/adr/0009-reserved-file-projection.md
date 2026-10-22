@@ -1,6 +1,6 @@
 # ADR-0009: Reserved-file projection joins the single write path
 
-- Status: accepted
+- Status: proposed
 - Date: 2026-10-22
 - Amends: [ADR-0003](0003-bundle-changeset-single-write-path.md)
 
