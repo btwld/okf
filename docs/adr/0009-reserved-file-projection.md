@@ -49,6 +49,12 @@ write-then-validate round trip holds because preparation validates the
 candidate, not by construction at the model seam. The change set still emits
 its own index and log texts through the model.
 
+`OkfPreparedCandidate.toLoadResult()` is new public API for the same
+downstream producers. It reads a candidate as a later load of the committed
+bundle would, keeping the load findings of source files the candidate does
+not replace, so downstream checks written against `OkfBundleLoadResult` judge
+the exact candidate before commit, at the boundary ADR-0002 names.
+
 `okf_io.dart` exports `OkfBundleLock`, so a caller can hold `write` around
 `prepare` and `commit` and keep the source from changing between them. The
 lock stays the advisory `fcntl` record lock on `<root>/.okf.lock` that okf

@@ -21,9 +21,11 @@
   and `writeDocument`, which `okf format` and `okf index` write through, now
   throw `ArgumentError` for such a text in check mode too, before touching the
   filesystem.
-- Add `OkfPreparedCandidate.toLoadResult()`, which reads a candidate as a
-  later load of the committed bundle would, retaining load findings for
-  source files the candidate does not replace.
+- Add `OkfPreparedCandidate.toLoadResult()`, a new public method that reads
+  a candidate as a later load of the committed bundle would, retaining load
+  findings for source files the candidate does not replace, so downstream
+  checks written against `OkfBundleLoadResult` can judge a candidate before
+  commit. See ADR-0009.
 - Export `OkfBundleLock` from `okf_io.dart`, so applications can run their own
   reads and writes under the bundle's claims. Its documentation and the README
   now state the rule the `fcntl` lock implies: run every operation on a bundle
