@@ -353,6 +353,17 @@ if (validation.isConformant) {
 }
 ```
 
+The reserved-file rules read §8 and §9 more strictly than the Spec's text. An
+index may hold only level-one section headings and linked list entries, with
+no prose lines or empty sections (`okf/invalid-index-structure`,
+`okf/index-entry-before-section`, `okf/empty-index-section`). A log needs a
+level-one title, no frontmatter, at least one `## YYYY-MM-DD` date heading and
+list entries under every date, with no prose lines (`okf/missing-log-title`,
+`okf/invalid-log-frontmatter`, `okf/missing-log-date`, `okf/empty-log-date`,
+`okf/invalid-log-structure`). Validation does not check that an index lists
+every concept. So okf can refuse an index or log the Spec allows, and accepts
+an incomplete index; the [conformance matrix][matrix] sets out each reading.
+
 ## Compatibility principles
 
 OKF intentionally requires very little. This package therefore separates
@@ -457,3 +468,4 @@ Apache License 2.0.
 
 [spec]: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/62432a095456147ee71e70ac6e4dc0d2dea3ac30/okf/SPEC.md
 [example]: https://github.com/btwld/okf/blob/main/example/okf.dart
+[matrix]: https://github.com/btwld/okf/blob/main/docs/conformance-matrix.md#reserved-file-readings
