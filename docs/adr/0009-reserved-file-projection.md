@@ -35,13 +35,14 @@ same tool error, because the writer would commit other bytes than the ones
 judged. `OkfBundleWriter` refuses such a text as well, so no write path
 replaces a surrogate with U+FFFD.
 
-Concepts stay out of reach: the overlay remains their only writer, so the
-lossless round trip keeps one owner. Only concept files keep one writer. A
-projection may replace a `log.md` wholesale, rewording or dropping the entry
-okf recorded for a concept change, or leave the change with no entry at all.
-The Spec requires no log entry: a `log.md` MAY appear at any level (§9). okf
-does not enforce its own entries; the closed validator judges a projected log
-by its §9 structure alone.
+Concepts stay out of reach. Only concept files keep one writer, the overlay,
+so their lossless round trip keeps one owner. A projection may replace a
+`log.md` wholesale, rewording or dropping the entry okf recorded for a concept
+change, or leave the change with no entry at all. The Spec requires no log
+entry: a `log.md` MAY appear at any level (§9). okf does not enforce its own
+entries; the closed validator judges a projected log only by okf's reading of
+the §9 structure (see the conformance matrix's
+[reserved-file readings](../conformance-matrix.md#reserved-file-readings)).
 
 This amends ADR-0004 for projected files. A projected text is a raw string
 from the caller, not an emission of the index/log model, so for it the
