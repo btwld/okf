@@ -634,6 +634,175 @@ title: Note
     expect(await _snapshot(root), before);
   });
 
+  group('concept edits keep the bytes they do not change', () {
+    const styled = '''
+---
+type: Metric
+title: 'Revenue'   # shown in indexes
+tags: [finance, monthly]
+generated: { by: agent:okf, at: 2026-08-01T00:00:00Z }
+# Kept by the finance team.
+owner: finance-team
+status: draft
+sources:
+  - resource: ledger.md
+    relationship: derived-from
+---
+
+# Revenue
+''';
+
+    Future<OkfBundleCommitResult> commit(OkfBundleChange change) async {
+      final preparation = await changes.prepare(
+        root.path,
+        OkfBundleChangeSet(<OkfBundleChange>[change]),
+      );
+      return changes.commit((preparation as OkfPreparationReady).prepared);
+    }
+
+    setUp(() => _write(root, 'metrics/revenue.md', styled));
+
+    test('an update edits only the keys it changes', () async {
+      await commit(
+        OkfUpdateConceptChange(
+          id: OkfConceptId('metrics/revenue'),
+          frontmatterChanges: const <String, Object?>{
+            'description': 'Recognized monthly revenue.',
+            'owner': null,
+            'generated': <String, Object?>{
+              'by': 'agent:okf',
+              'at': '2026-09-01T00:00:00Z',
+            },
+          },
+        ),
+      );
+
+      expect(await _read(root, 'metrics/revenue.md'), '''
+---
+type: Metric
+title: 'Revenue'   # shown in indexes
+tags: [finance, monthly]
+generated: {by: agent:okf, at: "2026-09-01T00:00:00Z"}
+# Kept by the finance team.
+status: draft
+sources:
+  - resource: ledger.md
+    relationship: derived-from
+description: Recognized monthly revenue.
+---
+
+# Revenue
+''');
+    });
+
+    test('a link appends to the sources list in place', () async {
+      await commit(
+        OkfLinkConceptsChange(
+          source: OkfConceptId('metrics/revenue'),
+          target: OkfConceptId('metrics/churn'),
+          relationship: 'depends-on',
+        ),
+      );
+
+      expect(
+        await _read(root, 'metrics/revenue.md'),
+        styled.replaceFirst(
+          '    relationship: derived-from\n',
+          '    relationship: derived-from\n'
+              '  - resource: churn.md\n'
+              '    relationship: depends-on\n',
+        ),
+      );
+    });
+
+    test('a deprecation replaces the status where it stands', () async {
+      await commit(
+        OkfDeprecateConceptChange(id: OkfConceptId('metrics/revenue')),
+      );
+
+      expect(
+        await _read(root, 'metrics/revenue.md'),
+        styled.replaceFirst('status: draft', 'status: deprecated'),
+      );
+    });
+
+    test('a body update keeps the frontmatter bytes', () async {
+      await commit(
+        OkfUpdateConceptChange(
+          id: OkfConceptId('metrics/revenue'),
+          frontmatterChanges: const <String, Object?>{'title': 'Revenue'},
+          body: '# Revenue\n\nRewritten.\n',
+        ),
+      );
+
+      expect(
+        await _read(root, 'metrics/revenue.md'),
+        '${styled.substring(0, styled.indexOf('# Revenue'))}'
+        '# Revenue\n\nRewritten.\n',
+      );
+    });
+
+    test('an update to values the concept holds writes nothing', () async {
+      final before = await _snapshot(root);
+      final result = await commit(
+        OkfUpdateConceptChange(
+          id: OkfConceptId('metrics/revenue'),
+          frontmatterChanges: <String, Object?>{
+            ...OkfDocument.parse(styled).frontmatter,
+            'generated': const <String, Object?>{
+              'at': '2026-08-01T00:00:00Z',
+              'by': 'agent:okf',
+            },
+          },
+          body: '# Revenue',
+        ),
+      );
+
+      expect(result.changedPaths, isEmpty);
+      expect(await _snapshot(root), before);
+    });
+
+    test('an update keeps CRLF line endings and a byte order mark', () async {
+      final file = File(p.join(root.path, 'metrics', 'revenue.md'));
+      await file.writeAsBytes(<int>[
+        0xEF,
+        0xBB,
+        0xBF,
+        ...utf8.encode(
+          '---\r\ntype: Metric\r\ntitle: Revenue\r\ntags: [finance]\r\n'
+          '---\r\n\r\n# Revenue\r\n',
+        ),
+      ]);
+
+      final preparation = await changes.prepare(
+        root.path,
+        OkfBundleChangeSet(<OkfBundleChange>[
+          OkfUpdateConceptChange(
+            id: OkfConceptId('metrics/revenue'),
+            frontmatterChanges: const <String, Object?>{
+              'tags': <Object?>['finance', 'monthly'],
+              'status': 'stable',
+            },
+          ),
+        ]),
+      );
+      final prepared = (preparation as OkfPreparationReady).prepared;
+      const edited =
+          '---\r\ntype: Metric\r\ntitle: Revenue\r\n'
+          'tags: [finance, monthly]\r\nstatus: stable\r\n'
+          '---\r\n\r\n# Revenue\r\n';
+      expect(prepared.candidate.concepts['metrics/revenue.md'], edited);
+      await changes.commit(prepared);
+
+      expect(await file.readAsBytes(), <int>[
+        0xEF,
+        0xBB,
+        0xBF,
+        ...utf8.encode(edited),
+      ]);
+    });
+  });
+
   group('reserved-file projection', () {
     const projectedIndex =
         '# Metric\n'

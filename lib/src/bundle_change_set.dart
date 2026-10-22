@@ -43,6 +43,11 @@ final class OkfCreateConceptChange extends OkfBundleChange {
 }
 
 /// A request to update the managed portions of an existing concept.
+///
+/// The concept's text is edited in place: frontmatter keys the change does
+/// not alter keep their exact bytes, and so does the body unless [body]
+/// replaces it. [OkfDocument.rewriteSource] states the rules. An update that
+/// leaves the concept's frontmatter and body as they are writes nothing.
 final class OkfUpdateConceptChange extends OkfBundleChange {
   /// Creates an update-change description.
   OkfUpdateConceptChange({
@@ -56,7 +61,8 @@ final class OkfUpdateConceptChange extends OkfBundleChange {
 
   /// Frontmatter values to overlay while retaining unmanaged fields.
   ///
-  /// Held as a deep, unmodifiable copy of the requested values.
+  /// A `null` value removes its field. Held as a deep, unmodifiable copy of
+  /// the requested values.
   final Map<String, Object?> frontmatterChanges;
 
   /// Replacement Markdown body, or `null` to retain the existing body.
@@ -64,6 +70,10 @@ final class OkfUpdateConceptChange extends OkfBundleChange {
 }
 
 /// A request to add a typed relationship between concepts.
+///
+/// The link is appended to the source concept's `sources` list in place,
+/// after its last item and in that item's style, or added as a new
+/// `sources` key; see [OkfDocument.rewriteSource].
 final class OkfLinkConceptsChange extends OkfBundleChange {
   /// Creates a link-change description.
   ///
@@ -94,6 +104,9 @@ final class OkfLinkConceptsChange extends OkfBundleChange {
 }
 
 /// A request to deprecate an existing concept.
+///
+/// Its `status` is set to `deprecated` in place, or added as a new key; see
+/// [OkfDocument.rewriteSource].
 final class OkfDeprecateConceptChange extends OkfBundleChange {
   /// Creates a deprecation-change description.
   const OkfDeprecateConceptChange({required this.id, this.note});
@@ -120,9 +133,10 @@ final class OkfBundleChangeSet {
 /// This is the tool-error tier of the write path: creating a concept that
 /// already exists, or touching one that does not, describes no bundle state
 /// at all, so there is no report to refuse with. So is a reserved-file
-/// projection that names a path other than an `index.md` or `log.md` file. A
-/// change that describes a state the Spec rejects is an
-/// [OkfPreparationRefused] instead.
+/// projection that names a path other than an `index.md` or `log.md` file,
+/// and an edit of a concept whose frontmatter cannot be written so that it
+/// reads back as the requested values. A change that describes a state the
+/// Spec rejects is an [OkfPreparationRefused] instead.
 final class OkfBundleChangeException implements Exception {
   /// Creates a change-description exception.
   const OkfBundleChangeException(this.message);

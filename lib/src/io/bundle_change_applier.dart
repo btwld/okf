@@ -81,10 +81,14 @@ final class OkfBundleChangeApplier {
     if (!plan.source.sameContent(current)) {
       throw const OkfStalePreparedChangeException();
     }
-    final written = await const OkfBundleWriteTransaction().writeAll(
-      plan.rootPath,
-      plan.changedFiles,
-    );
+    final written = await const OkfBundleWriteTransaction()
+        .writeAll(plan.rootPath, <String, String>{
+          for (final MapEntry(key: path, value: text)
+              in plan.changedFiles.entries)
+            path: plan.byteOrderMarkPaths.contains(path)
+                ? '$_byteOrderMark$text'
+                : text,
+        });
     return OkfBundleCommitResult(changedPaths: written.changedPaths);
   }
 
@@ -101,6 +105,10 @@ final class OkfBundleChangeApplier {
   /// projection produced it: writing it would commit other bytes than the
   /// ones validated. So does a change whose frontmatter holds such a string,
   /// which the YAML emitter cannot represent.
+  ///
+  /// Prepared texts are decoded text, which never holds the UTF-8 byte order
+  /// mark a file may begin with. A concept file that began with one keeps it
+  /// when the commit rewrites the file.
   Future<OkfBundlePreparation> prepare(
     String rootPath,
     OkfBundleChangeSet changes, {
@@ -170,6 +178,10 @@ final class OkfBundleChangeApplier {
           rootPath: loaded.rootPath,
           source: sourceAfter.withoutText(),
           changedFiles: changedFiles,
+          byteOrderMarkPaths: <String>{
+            for (final path in changedFiles.keys)
+              if (sourceAfter.startsWithByteOrderMark(path)) path,
+          },
         ),
       ),
     );
@@ -250,6 +262,8 @@ void _requireUtf8Text(String path, String text) {
     );
   }
 }
+
+const String _byteOrderMark = '\uFEFF';
 
 bool _isReservedFilePath(String path) {
   try {
@@ -542,11 +556,17 @@ final class _PreparedCommitPlan {
     required this.rootPath,
     required this.source,
     required Map<String, String> changedFiles,
-  }) : changedFiles = Map<String, String>.unmodifiable(changedFiles);
+    required Set<String> byteOrderMarkPaths,
+  }) : changedFiles = Map<String, String>.unmodifiable(changedFiles),
+       byteOrderMarkPaths = Set<String>.unmodifiable(byteOrderMarkPaths);
 
   final String rootPath;
   final _BundleSnapshot source;
   final Map<String, String> changedFiles;
+
+  /// Changed files whose source began with a UTF-8 byte order mark, which
+  /// decoding dropped from their text and the commit writes back.
+  final Set<String> byteOrderMarkPaths;
 }
 
 bool _isConceptPath(String path) =>
@@ -626,6 +646,16 @@ final class _BundleSnapshot {
   String? text(String path) {
     final bytes = retainedText[path];
     return bytes == null ? null : utf8.decode(bytes, allowMalformed: false);
+  }
+
+  /// Whether the retained bytes of [path] begin with a UTF-8 byte order mark.
+  bool startsWithByteOrderMark(String path) {
+    final bytes = retainedText[path];
+    return bytes != null &&
+        bytes.length >= 3 &&
+        bytes[0] == 0xEF &&
+        bytes[1] == 0xBB &&
+        bytes[2] == 0xBF;
   }
 
   _BundleSnapshot withoutText() => _BundleSnapshot(

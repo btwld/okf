@@ -4,6 +4,7 @@ import 'package:ack/ack.dart';
 import 'package:ack_annotations/ack_annotations.dart';
 import 'package:yaml/yaml.dart';
 
+import 'frontmatter_rewriter.dart';
 import 'metadata.dart';
 import 'yaml_data.dart';
 import 'yaml_emitter.dart';
@@ -95,7 +96,7 @@ final class OkfDocument {
   /// The top-level [frontmatter] map is copied so later structural mutations
   /// of the caller's map do not change this document. Nested semantic values
   /// are retained as supplied. The document has no source text, so its
-  /// [bodyStartLine] is null.
+  /// [sourceText] and [bodyStartLine] are null.
   OkfDocument({
     Map<String, Object?> frontmatter = const <String, Object?>{},
     String body = '',
@@ -110,6 +111,7 @@ final class OkfDocument {
     required Map<String, Object?> frontmatter,
     required this.body,
     required this.hasFrontmatter,
+    this.sourceText,
     this.bodyStartLine,
   }) : frontmatter = LinkedHashMap<String, Object?>.of(frontmatter);
 
@@ -120,8 +122,8 @@ final class OkfDocument {
   /// consumable but a concept validator can still report that frontmatter and
   /// `type` are required.
   ///
-  /// The parsed document records where its body begins in [source] as
-  /// [bodyStartLine].
+  /// The parsed document keeps [source] as [sourceText] and records where
+  /// its body begins in it as [bodyStartLine].
   factory OkfDocument.parse(String source, {String? sourcePath}) {
     final normalized = _normalizeLineEndings(source);
     final lines = normalized.split('\n');
@@ -130,6 +132,7 @@ final class OkfDocument {
         frontmatter: const <String, Object?>{},
         body: normalized,
         hasFrontmatter: false,
+        sourceText: source,
         bodyStartLine: 1,
       );
     }
@@ -212,6 +215,7 @@ final class OkfDocument {
       frontmatter: frontmatter,
       body: body,
       hasFrontmatter: true,
+      sourceText: source,
       bodyStartLine: bodyStartLine,
     );
   }
@@ -224,6 +228,13 @@ final class OkfDocument {
 
   /// Whether parsing found a frontmatter block.
   final bool hasFrontmatter;
+
+  /// The exact text this document was parsed from, or null for a document
+  /// built with the constructor or [copyWith].
+  ///
+  /// It is what [rewriteSource] edits. Mutating [frontmatter] afterwards does
+  /// not change it.
+  final String? sourceText;
 
   /// The one-based line of the parsed source on which [body] begins, or null
   /// for a document that was not parsed from text.
@@ -278,7 +289,9 @@ final class OkfDocument {
 
   /// Returns a copy with selected document parts replaced.
   ///
-  /// The copy has no source text, so its [bodyStartLine] is null.
+  /// The copy has no source text, so its [sourceText] and [bodyStartLine]
+  /// are null. Use [rewriteSource] to change a parsed document's text
+  /// without rewriting the parts that stay the same.
   OkfDocument copyWith({
     Map<String, Object?>? frontmatter,
     String? body,
@@ -316,6 +329,83 @@ final class OkfDocument {
   /// Alias for [serialize].
   String toMarkdown({OkfYamlEmitter emitter = const OkfYamlEmitter()}) =>
       serialize(emitter: emitter);
+
+  /// Returns [sourceText] edited so that it parses to [frontmatter] and,
+  /// unless [body] is null, to [body], keeping the exact bytes of everything
+  /// the edit does not change.
+  ///
+  /// [frontmatter] is the complete resulting mapping and defaults to this
+  /// document's [frontmatter]; a key it lacks is removed. This document is
+  /// not changed. Values compare as YAML data: mappings without regard to
+  /// key order, an integer never equals a double, and a [DateTime] is the
+  /// string of its `toIso8601String()`, which is how it is written.
+  ///
+  /// The frontmatter is edited in place:
+  ///
+  /// * A key whose value is unchanged keeps its bytes: its position, flow or
+  ///   block style, quoting, comments and the blank lines around it.
+  /// * A changed one-line scalar is replaced by its span, and so is a changed
+  ///   flow collection whose new items are all scalars or empty collections,
+  ///   which keeps its flow style. Whatever else shares the line, such as a
+  ///   trailing comment, stays.
+  /// * A changed block mapping is edited entry by entry, by these same rules.
+  ///   A changed block sequence whose old items are a prefix of its new ones
+  ///   gets the new items after its last item, in that item's style
+  ///   (`- key: value`, or `-` on a line of its own); one whose length is
+  ///   unchanged has each changed item edited by these rules.
+  /// * Any other changed value is written after its key, replacing the old
+  ///   value through the end of its last line, comments included: a scalar
+  ///   or an empty collection as `key: <scalar>`, `key: []` or `key: {}`,
+  ///   and a collection in the block style [OkfYamlEmitter.emit] uses.
+  /// * A removed key removes only its own lines, from its key's line to its
+  ///   value's last. Comment and blank lines around it stay.
+  /// * A new key goes on the lines directly after the last entry of its
+  ///   mapping, before any comment or blank lines that end the mapping, at
+  ///   the indentation of the mapping's keys and in the order [frontmatter]
+  ///   lists the new keys. In a frontmatter block with no entries it goes
+  ///   directly before the closing `---`.
+  ///
+  /// Scalars are written as [OkfYamlEmitter.scalar] writes them, and new
+  /// lines end with the line break of the document's first line, so a CRLF
+  /// document stays CRLF. The delimiter lines, and a leading byte order mark,
+  /// are kept.
+  ///
+  /// A [body] equal to this document's body once line endings are
+  /// normalized and a final newline is added keeps the current bytes; any
+  /// other is written in that canonical form, after one blank line, with the
+  /// document's line break. So when the resulting frontmatter equals the
+  /// current one the frontmatter block is byte-identical, and so is the whole
+  /// text when the body is unchanged too.
+  ///
+  /// Every result is parsed again and must read back as [frontmatter] and
+  /// the expected body. Otherwise the edit is made again replacing the whole
+  /// value of each changed top-level key, as for any other changed value
+  /// above; and if that does not read back either, [OkfYamlEmitter.emit]
+  /// re-emits the whole mapping, in its key order, between the existing
+  /// delimiter lines. An in-place attempt also gives up when it would remove
+  /// the first key of a `- key: value` item, whose line holds the item's
+  /// `-`. The whole mapping is re-emitted without an in-place attempt when
+  /// the frontmatter is not a block mapping (for example a one-line
+  /// `{type: Metric}`) or uses a YAML alias, an explicit `?` key or a
+  /// collection as a key. Throws [OkfYamlEncodeException] when a value
+  /// cannot be written as YAML, or when even the re-emitted mapping does not
+  /// read back.
+  ///
+  /// A document without a frontmatter block gets one in front of its text
+  /// when [frontmatter] is not empty. A document without [sourceText] is
+  /// written as [serialize] writes it, and checked the same way.
+  String rewriteSource({
+    Map<String, Object?>? frontmatter,
+    String? body,
+    OkfYamlEmitter emitter = const OkfYamlEmitter(),
+  }) => rewriteOkfDocumentSource(
+    sourceText,
+    frontmatter ?? this.frontmatter,
+    body: body,
+    currentBody: this.body,
+    hasFrontmatter: hasFrontmatter,
+    emitter: emitter,
+  );
 
   /// Entries from a legacy v0.1 top-level `# Citations` section.
   List<OkfLegacyCitation> get legacyCitations {

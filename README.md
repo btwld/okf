@@ -151,7 +151,9 @@ without the `.md` suffix; `type` is required when creating.
 `create-concept` and `update-concept` manage. An update overlays only the
 arguments it is given and retains every other field — `resource`,
 `verification`, `sources`, and anything else the document carries keep their
-values and their order.
+values, their order and their exact text, comments included. Only the lines
+of the fields the update changes are rewritten, as described under
+[Library](#library).
 
 `link-concepts` records `relationship` on the `source` concept as a reference
 to `target`, which `okf graph` exposes as a concept edge. The target may be
@@ -245,6 +247,43 @@ CR as one line break each, as parsing does, and a byte order mark as none.
 Without frontmatter it is 1, and it is `null` for a document built with the
 constructor or `copyWith`.
 
+`rewriteSource` edits the text a document was parsed from, its `sourceText`,
+rather than writing the document anew, so a host can change frontmatter
+without touching anything else:
+
+```dart
+final edited = document.rewriteSource(
+  frontmatter: {...document.frontmatter, 'status': 'deprecated'},
+);
+// ---
+// type: Metric
+// title: Revenue
+// verified: {by: "human:reviewer", at: "2026-07-27T12:00:00Z"}
+// status: deprecated
+// ---
+```
+
+A key whose value is unchanged keeps its exact bytes: its position, flow or
+block style, quoting, comments and the blank lines around it. A changed
+one-line value or flow collection is replaced where it stands, keeping a
+comment after it on its line; a changed block mapping is edited entry by
+entry, and items added to the end of a block sequence go after its last item,
+in that item's style. A removed key removes only its own lines, and a new key
+goes directly after the last entry of its mapping. When the frontmatter and
+body come out equal to the current ones, the text is returned byte for byte.
+New lines take the document's line break, so CRLF files stay CRLF.
+
+Every result is parsed again and must read back as the requested mapping.
+When an in-place edit does not, okf re-emits the whole value of each changed
+top-level key, and failing that the whole mapping; it re-emits the whole
+mapping straight away for a one-line `{...}` mapping or one that uses YAML
+aliases or explicit `?` keys. The `rewriteSource` documentation lists every
+rule. `OkfYamlEmitter.scalar` returns the text a scalar is written as, so a
+host can predict how a value will look: `Revenue` and `finance-team` stay
+plain, while `2026-08-18`, `true` and `a: b` are written as JSON string
+literals such as `"2026-08-18"`. `serialize` still writes the canonical form
+`okf format` uses.
+
 Filesystem operations live in the separate `okf_io.dart` library:
 
 ```dart
@@ -296,6 +335,13 @@ switch (result) {
     print(validation.report.toText());
 }
 ```
+
+Update, link and deprecate changes edit an existing concept the way
+`rewriteSource` does, so its diff shows only the lines the change touches: a
+link appends its `sources` item after the last one, and a deprecation replaces
+the `status` value where it stands. An update that leaves a concept as it is
+writes nothing, and a concept file that begins with a UTF-8 byte order mark
+keeps it. New concepts are written in canonical form.
 
 A projection lets a caller rewrite the reserved `index.md` and `log.md` files
 of the same candidate, for example to apply its own index conventions or to

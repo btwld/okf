@@ -1,6 +1,7 @@
 import 'dart:collection';
 import 'dart:convert';
 
+import 'document.dart' show OkfDocument;
 import 'utf8_text.dart';
 import 'yaml_data.dart';
 
@@ -52,6 +53,10 @@ final class OkfYamlEncodeException implements FormatException {
 /// scalars in a canonical form that can be read by general YAML parsers.
 /// A string that holds an unpaired surrogate has no such form, because YAML
 /// text cannot hold one, so the emitter refuses it.
+///
+/// [OkfDocument.rewriteSource] writes the values it changes with this
+/// emitter too: a scalar exactly as [scalar] writes it, and a collection in
+/// the block style [emit] uses unless it replaces a flow collection.
 final class OkfYamlEmitter {
   /// Creates an emitter.
   const OkfYamlEmitter({
@@ -85,7 +90,9 @@ final class OkfYamlEmitter {
   /// Returns the text this emitter writes for the scalar [value].
   ///
   /// Hosts use it to predict how a value is written: [emit] writes a scalar
-  /// value as `key: <scalar>`, and spells a mapping key the same way.
+  /// value as `key: <scalar>` and spells a mapping key the same way, and
+  /// [OkfDocument.rewriteSource] writes this text for every scalar value or
+  /// key it changes or adds.
   ///
   /// A string is written plain, without quotes, when all of these hold:
   ///
@@ -329,6 +336,28 @@ final class OkfYamlEmitter {
       '.inf',
     }.contains(lowered);
   }
+}
+
+/// The lines [emitter] writes for the non-empty collection [value] when it
+/// is nested at [indentation], as [OkfYamlEmitter.emit] writes a collection
+/// value under its key.
+///
+/// For the frontmatter rewriter only; `okf.dart` does not export it.
+List<String> emitOkfYamlBlockLines(
+  OkfYamlEmitter emitter,
+  Object? value, {
+  required int indentation,
+}) {
+  final output = StringBuffer();
+  emitter._writeNode(
+    output,
+    value,
+    indentation: indentation,
+    state: _YamlEmissionState(),
+  );
+  final text = output.toString();
+  return (text.endsWith('\n') ? text.substring(0, text.length - 1) : text)
+      .split('\n');
 }
 
 final class _YamlEmissionState {
