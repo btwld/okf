@@ -7,10 +7,10 @@
 ## Context
 
 A downstream producer layers its own index and log conventions over a bundle:
-a Wayfinder Profile that generates `index.md` for directories okf's overlay
-does not touch, or a caller that records its own log entry for a change. The
-change set fixes those bytes at preparation, so the producer could either
-write the files after commit, outside the lock, the validation and the
+a tool that generates `index.md` by its own rules, including for directories
+okf's overlay does not touch, or a caller that records its own log entry for a
+change. The change set fixes those bytes at preparation, so the producer could
+either write the files after commit, outside the lock, the validation and the
 rollback, or fork the overlay. Either way the bytes on disk would no longer be
 the bytes the Spec validator judged. Producers that compare indexes with
 generated output also had to pin an exact okf patch release, because the
