@@ -1000,6 +1000,66 @@ owner: finance-team
       expect(seen.changedFiles['log.md'], contains('## 2026-08-17'));
     });
 
+    test('reserved files keep a byte order mark', () async {
+      const mark = <int>[0xEF, 0xBB, 0xBF];
+      // The change set's own index and log, and a projection's, are written
+      // back with the mark the file began with, as concepts are.
+      for (final projected in <bool>[false, true]) {
+        await _seedBundle(root);
+        for (final path in <String>['metrics/index.md', 'log.md']) {
+          final file = File(p.join(root.path, path));
+          await file.writeAsBytes(<int>[...mark, ...await file.readAsBytes()]);
+        }
+        final churn = File(p.join(root.path, 'metrics', 'churn.md'));
+        if (await churn.exists()) {
+          await churn.delete();
+        }
+
+        final preparation = await changes.prepare(
+          root.path,
+          _createChurn(),
+          project: projected
+              ? (_) => <String, String?>{
+                  'metrics/index.md': projectedIndex,
+                  'log.md': projectedLog,
+                }
+              : null,
+        );
+        final prepared = (preparation as OkfPreparationReady).prepared;
+        final index = prepared.candidate.indexes['metrics/index.md']!;
+        final log = prepared.candidate.logs['log.md']!;
+        expect(index.startsWith('\uFEFF'), isFalse);
+        expect(log.startsWith('\uFEFF'), isFalse);
+        if (projected) {
+          expect(index, projectedIndex);
+          expect(log, projectedLog);
+        }
+        final result = await changes.commit(prepared);
+        expect(
+          result.changedPaths,
+          containsAll(<String>['metrics/index.md', 'log.md', 'index.md']),
+        );
+
+        expect(
+          await _readBytes(root, 'metrics/index.md'),
+          <int>[...mark, ...utf8.encode(index)],
+          reason: 'projected: $projected',
+        );
+        expect(await _readBytes(root, 'log.md'), <int>[
+          ...mark,
+          ...utf8.encode(log),
+        ], reason: 'projected: $projected');
+        expect(
+          (await _readBytes(root, 'index.md')).take(3),
+          isNot(mark),
+          reason: 'a file without the mark does not gain one',
+        );
+        final reloaded = await const OkfBundleLoader().inspect(root.path);
+        expect(reloaded.indexes['metrics/index.md'], index);
+        expect(reloaded.logs['log.md'], log);
+      }
+    });
+
     test('null keeps the source text or its absence', () async {
       final sourceLog = await _read(root, 'log.md');
       final sourceIndex = await _read(root, 'index.md');

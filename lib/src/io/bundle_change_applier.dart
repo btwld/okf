@@ -107,8 +107,9 @@ final class OkfBundleChangeApplier {
   /// which the YAML emitter cannot represent.
   ///
   /// Prepared texts are decoded text, which never holds the UTF-8 byte order
-  /// mark a file may begin with. A concept file that began with one keeps it
-  /// when the commit rewrites the file.
+  /// mark a file may begin with. A file that began with one keeps it when the
+  /// commit rewrites the file: a concept and an `index.md` or `log.md` alike,
+  /// whether the change set or [project] wrote its new text.
   Future<OkfBundlePreparation> prepare(
     String rootPath,
     OkfBundleChangeSet changes, {
@@ -124,7 +125,11 @@ final class OkfBundleChangeApplier {
     );
     final sourceAfter = await _snapshot(
       loaded.rootPath,
-      retainedTextPaths: loaded.documents.keys.toSet(),
+      retainedTextPaths: <String>{
+        ...loaded.documents.keys,
+        ...loaded.indexes.keys,
+        ...loaded.logs.keys,
+      },
     );
     if (!sourceBefore.sameContent(sourceAfter)) {
       throw const OkfStalePreparedChangeException();
@@ -195,6 +200,10 @@ final class OkfBundleChangeApplier {
 /// `index.md` or `log.md` file. A text replaces whatever the change set
 /// prepared for that path; `null` keeps the source bundle's text, or its
 /// absence. Paths the result does not name keep the change set's text.
+///
+/// Texts are decoded text without the UTF-8 byte order mark, as
+/// [OkfProjectionInput.base] holds them. A reserved file that began with one
+/// keeps it when the commit writes the projected text, as a concept does.
 ///
 /// The change set regenerates every ancestor index of a directory it adds,
 /// and the Spec validator does not check where index links lead. Returning
