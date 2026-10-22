@@ -3,8 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:okf/okf_io.dart';
-import 'package:okf/src/io/bundle_lock.dart' show OkfBundleLock;
-import 'package:okf/src/version.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:yaml/yaml.dart';
@@ -40,11 +38,11 @@ void main() {
 
     final version = await runCli(<String>['--version'], sandbox.path);
     expect(version.exitCode, 0);
-    expect(version.stdout, 'okf $okfPackageVersion');
+    expect(version.stdout, 'okf $okfVersion');
 
     final pubspec =
         loadYaml(await File('pubspec.yaml').readAsString()) as YamlMap;
-    expect(okfPackageVersion, pubspec['version']);
+    expect(okfVersion, pubspec['version']);
   });
 
   test('usage and filesystem errors return exit code 2', () async {

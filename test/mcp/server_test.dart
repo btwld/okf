@@ -744,6 +744,34 @@ void main() {
     }
     expect(await snapshotBundle(bundle), before);
 
+    // JSON can carry a lone surrogate, which UTF-8 cannot encode.
+    final unencodable = <Map<String, Object?>>[
+      await server.callTool('update-concept', const <String, Object?>{
+        'id': 'metrics/revenue',
+        'body': '# Revenue \uD800',
+      }),
+      await server.callTool('deprecate-concept', const <String, Object?>{
+        'id': 'metrics/revenue',
+        'note': 'Replaced \uDC00.',
+      }),
+      // In frontmatter, YAML cannot represent it either.
+      await server.callTool('update-concept', const <String, Object?>{
+        'id': 'metrics/revenue',
+        'title': 'Revenue \uD800',
+      }),
+      await server.callTool('link-concepts', const <String, Object?>{
+        'source': 'metrics/revenue',
+        'target': 'metrics/margin',
+        'relationship': 'relates \uDC00 to',
+      }),
+    ];
+    for (final error in unencodable) {
+      expect(error['isError'], isTrue, reason: '${error['content']}');
+      expect(_errorReport(error), isNull);
+      expect(_singleText(error), contains('unpaired surrogate'));
+    }
+    expect(await snapshotBundle(bundle), before);
+
     final idempotent = await server.call(
       'update-concept',
       const <String, Object?>{'id': 'metrics/revenue', 'title': 'Revenue'},

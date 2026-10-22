@@ -94,11 +94,23 @@ final class OkfDocument {
   ///
   /// The top-level [frontmatter] map is copied so later structural mutations
   /// of the caller's map do not change this document. Nested semantic values
-  /// are retained as supplied.
+  /// are retained as supplied. The document has no source text, so its
+  /// [bodyStartLine] is null.
   OkfDocument({
     Map<String, Object?> frontmatter = const <String, Object?>{},
-    this.body = '',
-    this.hasFrontmatter = true,
+    String body = '',
+    bool hasFrontmatter = true,
+  }) : this._(
+         frontmatter: frontmatter,
+         body: body,
+         hasFrontmatter: hasFrontmatter,
+       );
+
+  OkfDocument._({
+    required Map<String, Object?> frontmatter,
+    required this.body,
+    required this.hasFrontmatter,
+    this.bodyStartLine,
   }) : frontmatter = LinkedHashMap<String, Object?>.of(frontmatter);
 
   /// Parses an OKF document.
@@ -107,11 +119,19 @@ final class OkfDocument {
   /// Markdown body and [hasFrontmatter] is false. This is syntactically
   /// consumable but a concept validator can still report that frontmatter and
   /// `type` are required.
+  ///
+  /// The parsed document records where its body begins in [source] as
+  /// [bodyStartLine].
   factory OkfDocument.parse(String source, {String? sourcePath}) {
     final normalized = _normalizeLineEndings(source);
     final lines = normalized.split('\n');
     if (lines.isEmpty || lines.first.trim() != '---') {
-      return OkfDocument(body: normalized, hasFrontmatter: false);
+      return OkfDocument._(
+        frontmatter: const <String, Object?>{},
+        body: normalized,
+        hasFrontmatter: false,
+        bodyStartLine: 1,
+      );
     }
 
     int? closingLine;
@@ -181,11 +201,19 @@ final class OkfDocument {
     }
 
     var body = lines.sublist(closingLine + 1).join('\n');
+    // `closingLine` is zero-based, so the line after it is `closingLine + 2`.
+    var bodyStartLine = closingLine + 2;
     // A single empty line conventionally separates frontmatter from Markdown.
     if (body.startsWith('\n')) {
       body = body.substring(1);
+      bodyStartLine++;
     }
-    return OkfDocument(frontmatter: frontmatter, body: body);
+    return OkfDocument._(
+      frontmatter: frontmatter,
+      body: body,
+      hasFrontmatter: true,
+      bodyStartLine: bodyStartLine,
+    );
   }
 
   /// Ordered, open YAML metadata. Unknown keys are retained.
@@ -196,6 +224,30 @@ final class OkfDocument {
 
   /// Whether parsing found a frontmatter block.
   final bool hasFrontmatter;
+
+  /// The one-based line of the parsed source on which [body] begins, or null
+  /// for a document that was not parsed from text.
+  ///
+  /// Line `n` of [body], counting from 1 and splitting at `\n`, is line
+  /// `bodyStartLine + n - 1` of the source, so a host can cite body text by
+  /// source line without searching the source for it. Lines are counted as
+  /// [OkfDocument.parse] reads them: LF, CRLF and a lone CR each end a line,
+  /// and a byte order mark adds none.
+  ///
+  /// A final line break ends the body's last line rather than starting
+  /// another, so the empty element that splitting leaves after it is not a
+  /// line: a body of `k` lines ends on line `bodyStartLine + k - 1`, which is
+  /// the source's last line.
+  ///
+  /// Without frontmatter the body is the whole source and begins on line 1.
+  /// Otherwise it begins on the line after the closing `---` delimiter, or on
+  /// the line after that when parsing drops the blank separator line. An
+  /// empty body after frontmatter therefore begins one line past the
+  /// source's last line.
+  ///
+  /// Documents from the constructor or [copyWith] have no source, so this is
+  /// null for them.
+  final int? bodyStartLine;
 
   /// Typed, non-destructive access to known OKF metadata.
   OkfMetadata get metadata => OkfMetadata.fromFrontmatter(frontmatter);
@@ -225,6 +277,8 @@ final class OkfDocument {
   bool isStale([DateTime? now]) => metadata.isStale(now);
 
   /// Returns a copy with selected document parts replaced.
+  ///
+  /// The copy has no source text, so its [bodyStartLine] is null.
   OkfDocument copyWith({
     Map<String, Object?>? frontmatter,
     String? body,

@@ -8,6 +8,8 @@ import 'package:path/path.dart' as p;
 
 import '../bundle_path.dart';
 import '../document.dart';
+import '../utf8_text.dart';
+import '../yaml_emitter.dart';
 import 'bundle_lock.dart';
 
 /// The outcome of writing or checking a set of bundle files.
@@ -51,17 +53,25 @@ final class OkfWriteRollbackException implements Exception {
 /// metadata such as modes, ACLs, or extended attributes. Existing symbolic
 /// links in the destination path are rejected. These checks assume the bundle
 /// is not being concurrently replaced by an adversarial process.
+///
+/// Files are written as UTF-8, so [writeAll] refuses a text that holds an
+/// unpaired surrogate, which UTF-8 cannot encode, and [writeDocument] refuses
+/// frontmatter that holds one.
 final class OkfBundleWriter {
   /// Creates a bundle writer.
   const OkfBundleWriter();
 
   /// Serializes and writes [document] beneath [rootPath].
+  ///
+  /// Frontmatter the YAML emitter cannot represent, such as a string that
+  /// holds an unpaired surrogate, fails with [OkfYamlEncodeException] before
+  /// the filesystem is touched.
   Future<OkfWriteResult> writeDocument(
     String rootPath,
     String relativePath,
     OkfDocument document, {
     bool checkOnly = false,
-  }) => writeAll(rootPath, <String, String>{
+  }) async => writeAll(rootPath, <String, String>{
     relativePath: document.serialize(),
   }, checkOnly: checkOnly);
 
@@ -72,27 +82,27 @@ final class OkfBundleWriter {
   ///
   /// [expectedSources] maps paths to the text the caller read. A mismatch fails
   /// the call instead of writing or reporting against stale content.
+  ///
+  /// In both modes, an invalid or repeated path, or a text that holds an
+  /// unpaired surrogate, throws [ArgumentError] before the filesystem is
+  /// touched.
   Future<OkfWriteResult> writeAll(
     String rootPath,
     Map<String, String> files, {
     bool checkOnly = false,
     Map<String, String> expectedSources = const <String, String>{},
   }) async {
+    final normalizedFiles = _normalizeFiles(files);
     if (checkOnly) {
       final root = await _validatedRoot(rootPath, createIfMissing: false);
-      return _writeAll(
-        root,
-        _normalizeFiles(files),
-        expectedSources,
-        checkOnly: true,
-      );
+      return _writeAll(root, normalizedFiles, expectedSources, checkOnly: true);
     }
     await _createRoot(rootPath);
     return OkfBundleLock.write(rootPath, () async {
       final root = await _validatedRoot(rootPath, createIfMissing: true);
       return _writeAll(
         root,
-        _normalizeFiles(files),
+        normalizedFiles,
         expectedSources,
         checkOnly: false,
       );
@@ -103,8 +113,8 @@ final class OkfBundleWriter {
     String rootPath,
     Map<String, String> files,
   ) async {
-    final root = await _validatedRoot(rootPath, createIfMissing: true);
     final normalizedFiles = _normalizeFiles(files);
+    final root = await _validatedRoot(rootPath, createIfMissing: true);
     final captured = await _capture(root, normalizedFiles.keys);
     final staged = <_StagedFile>[];
     var applying = false;
@@ -168,6 +178,16 @@ final class OkfBundleWriter {
           entry.key,
           'files',
           'Duplicate bundle path: $relativePath',
+        );
+      }
+      // utf8.encode would write U+FFFD in its place, so the bytes on disk
+      // would not be the text the caller passed or validated.
+      if (hasUnpairedSurrogate(entry.value)) {
+        throw ArgumentError.value(
+          entry.key,
+          'files',
+          'Bundle path $relativePath holds an unpaired surrogate, which UTF-8 '
+              'cannot encode',
         );
       }
       normalizedFiles[relativePath] = entry.value;
@@ -452,8 +472,9 @@ Future<void> _createRoot(String rootPath) async {
 /// Package-internal transaction boundary used by the prepared write path.
 ///
 /// Kept out of the public IO library so rollback-backed multi-file writes
-/// cannot bypass prospective validation. Every payload is staged before the
-/// first destination is replaced.
+/// cannot bypass prospective validation. Every payload is checked, as
+/// [OkfBundleWriter.writeAll] checks it, and staged before the first
+/// destination is replaced.
 final class OkfBundleWriteTransaction {
   const OkfBundleWriteTransaction();
 

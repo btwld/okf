@@ -1,6 +1,7 @@
 import 'dart:collection';
 import 'dart:convert';
 
+import 'utf8_text.dart';
 import 'yaml_data.dart';
 
 /// Preferred top-level frontmatter order used by OKF producer tooling.
@@ -49,6 +50,8 @@ final class OkfYamlEncodeException implements FormatException {
 /// It intentionally does not try to preserve comments, anchors, aliases,
 /// quoting style, or whitespace. It emits ordinary mappings, sequences, and
 /// scalars in a canonical form that can be read by general YAML parsers.
+/// A string that holds an unpaired surrogate has no such form, because YAML
+/// text cannot hold one, so the emitter refuses it.
 final class OkfYamlEmitter {
   /// Creates an emitter.
   const OkfYamlEmitter({
@@ -59,6 +62,11 @@ final class OkfYamlEmitter {
   final List<String> preferredTopLevelKeys;
 
   /// Emits [frontmatter] without a trailing newline.
+  ///
+  /// Throws [OkfYamlEncodeException] for a value it cannot represent: an
+  /// unsupported type, a cyclic collection, a non-scalar mapping key, more
+  /// nodes than the supported limit, or a string that holds an unpaired
+  /// surrogate, whether a key or a value.
   String emit(Map<String, Object?> frontmatter) {
     final output = StringBuffer();
     final state = _YamlEmissionState();
@@ -244,6 +252,14 @@ final class OkfYamlEmitter {
   }
 
   String _string(String value) {
+    // jsonEncode would write the surrogate as a `\ud800` escape, which YAML
+    // parsers reject, so the emitted text would not read back.
+    if (hasUnpairedSurrogate(value)) {
+      throw OkfYamlEncodeException(
+        'A string holds an unpaired surrogate, which YAML cannot represent.',
+        value,
+      );
+    }
     if (_canUsePlainScalar(value)) {
       return value;
     }

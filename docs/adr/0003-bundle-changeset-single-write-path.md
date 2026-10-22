@@ -1,6 +1,6 @@
 # ADR-0003: BundleChangeSet is the single write path; MCP verbs are thin adapters
 
-- Status: accepted
+- Status: accepted, amended by [ADR-0009](0009-reserved-file-projection.md)
 - Date: 2026-08-14
 - Issues: [#16](https://github.com/conceptadev/okf/issues/16), #12, #13
 

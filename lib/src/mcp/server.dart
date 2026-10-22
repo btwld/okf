@@ -67,7 +67,7 @@ final class OkfMcpServer {
 
   McpServer _buildServer() {
     final server = McpServer(
-      const Implementation(name: 'okf', version: okfPackageVersion),
+      const Implementation(name: 'okf', version: okfVersion),
       options: const McpServerOptions(
         capabilities: ServerCapabilities(tools: ServerCapabilitiesTools()),
       ),

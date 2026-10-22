@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
@@ -9,8 +10,10 @@ import 'package:unorm_dart/unorm_dart.dart' as unorm;
 import '../bundle.dart';
 import '../bundle_change_overlay.dart';
 import '../bundle_change_set.dart';
+import '../bundle_path.dart';
 import '../document.dart';
 import '../finding.dart';
+import '../utf8_text.dart';
 import 'bundle_loader.dart';
 import 'bundle_lock.dart';
 import 'bundle_writer.dart';
@@ -42,18 +45,27 @@ final class OkfBundleChangeApplier {
   /// Adapters that do not need the inspection seam can use this operation so
   /// concurrent callers never prepare from the same source state. Call
   /// [prepare] and [commit] separately when downstream policy must inspect the
-  /// immutable candidate between them.
+  /// immutable candidate between them. [project] is passed to [prepare], and
+  /// the projection callback runs while this operation holds the exclusive
+  /// lock.
   Future<OkfBundleApplication> apply(
     String rootPath,
-    OkfBundleChangeSet changes,
-  ) => OkfBundleLock.write(rootPath, () async {
-    final preparation = await prepare(rootPath, changes);
+    OkfBundleChangeSet changes, {
+    OkfReservedFileProjection? project,
+  }) => OkfBundleLock.write(rootPath, () async {
+    final preparation = await prepare(rootPath, changes, project: project);
     return switch (preparation) {
       OkfPreparationReady(prepared: final prepared) => OkfBundleApplied(
         result: await _commitLocked(prepared),
       ),
-      OkfPreparationRefused(validation: final validation) =>
-        OkfBundleApplicationRefused(validation: validation),
+      OkfPreparationRefused(
+        validation: final validation,
+        candidate: final candidate,
+      ) =>
+        OkfBundleApplicationRefused(
+          validation: validation,
+          candidate: candidate,
+        ),
     };
   });
 
@@ -77,16 +89,30 @@ final class OkfBundleChangeApplier {
   }
 
   /// Builds and validates a complete candidate without writing any file.
+  ///
+  /// [project], when given, rewrites reserved `index.md` and `log.md` texts
+  /// after the change set is overlaid and before the candidate is validated.
+  /// Its output is judged and committed exactly like the change set's own
+  /// files. A key that is not a reserved file path throws
+  /// [OkfBundleChangeException].
+  ///
+  /// A text that UTF-8 cannot encode, because it holds an unpaired surrogate,
+  /// also throws [OkfBundleChangeException], whether the change set or the
+  /// projection produced it: writing it would commit other bytes than the
+  /// ones validated. So does a change whose frontmatter holds such a string,
+  /// which the YAML emitter cannot represent.
   Future<OkfBundlePreparation> prepare(
     String rootPath,
-    OkfBundleChangeSet changes,
-  ) async {
+    OkfBundleChangeSet changes, {
+    OkfReservedFileProjection? project,
+  }) async {
     final sourceBefore = await _snapshot(rootPath);
     final loaded = await const OkfBundleLoader().inspect(sourceBefore.rootPath);
+    final date = clock();
     final overlay = OkfBundleChangeOverlay.of(
       loaded.bundle,
       changes,
-      date: clock(),
+      date: date,
     );
     final sourceAfter = await _snapshot(
       loaded.rootPath,
@@ -96,18 +122,38 @@ final class OkfBundleChangeApplier {
       throw const OkfStalePreparedChangeException();
     }
 
-    final changedFiles = Map<String, String>.unmodifiable(overlay.files);
-    final candidate = OkfPreparedCandidate._fromSnapshot(
+    overlay.files.forEach(_requireUtf8Text);
+    var changedFiles = Map<String, String>.unmodifiable(overlay.files);
+    var candidate = OkfPreparedCandidate._fromSnapshot(
       loaded: loaded,
       source: sourceAfter,
       changedFiles: changedFiles,
     );
+    if (project != null) {
+      final projection = await project(
+        OkfProjectionInput._(
+          base: loaded,
+          candidate: candidate,
+          changedFiles: changedFiles,
+          date: date,
+        ),
+      );
+      changedFiles = _withProjection(loaded, changedFiles, projection);
+      candidate = OkfPreparedCandidate._fromSnapshot(
+        loaded: loaded,
+        source: sourceAfter,
+        changedFiles: changedFiles,
+      );
+    }
     final validation = loaded.validateCandidate(
       candidate.toBundle(),
       replacedPaths: changedFiles.keys,
     );
     if (!validation.isConformant) {
-      return OkfPreparationRefused(validation: validation);
+      return OkfPreparationRefused(
+        validation: validation,
+        candidate: candidate,
+      );
     }
     await _validateCandidatePaths(
       candidate,
@@ -128,6 +174,91 @@ final class OkfBundleChangeApplier {
       ),
     );
   }
+}
+
+/// Rewrites the reserved files of a candidate during
+/// [OkfBundleChangeApplier.prepare].
+///
+/// The result is keyed by bundle-relative path, and every key must name an
+/// `index.md` or `log.md` file. A text replaces whatever the change set
+/// prepared for that path; `null` keeps the source bundle's text, or its
+/// absence. Paths the result does not name keep the change set's text.
+///
+/// The change set regenerates every ancestor index of a directory it adds,
+/// and the Spec validator does not check where index links lead. Returning
+/// `null` for the `index.md` of a directory the change set adds therefore
+/// leaves its ancestors listing a missing file, so a projection that drops
+/// such an index should also project the ancestor indexes.
+typedef OkfReservedFileProjection =
+    FutureOr<Map<String, String?>> Function(OkfProjectionInput input);
+
+/// What an [OkfReservedFileProjection] projects from.
+final class OkfProjectionInput {
+  OkfProjectionInput._({
+    required this.base,
+    required this.candidate,
+    required this.changedFiles,
+    required this.date,
+  });
+
+  /// The source bundle, as preparation inspected it.
+  final OkfBundleLoadResult base;
+
+  /// The candidate the change set describes, before projection.
+  final OkfPreparedCandidate candidate;
+
+  /// The texts the change set writes, keyed by bundle-relative path.
+  final Map<String, String> changedFiles;
+
+  /// The date the change set records its log entries under.
+  final DateTime date;
+}
+
+Map<String, String> _withProjection(
+  OkfBundleLoadResult base,
+  Map<String, String> changedFiles,
+  Map<String, String?> projection,
+) {
+  final files = Map<String, String>.of(changedFiles);
+  for (final MapEntry(key: path, value: text) in projection.entries) {
+    if (!_isReservedFilePath(path)) {
+      throw OkfBundleChangeException(
+        'A projection may rewrite only index.md and log.md files, not $path.',
+      );
+    }
+    if (text == null || text == (base.indexes[path] ?? base.logs[path])) {
+      files.remove(path);
+    } else {
+      _requireUtf8Text(path, text);
+      files[path] = text;
+    }
+  }
+  return Map<String, String>.unmodifiable(files);
+}
+
+/// Throws unless [text] survives the UTF-8 encoding the writer applies.
+///
+/// `utf8.encode` replaces an unpaired surrogate with U+FFFD, so such a text
+/// would be validated as one string and committed as another. The writer
+/// refuses it too; checking here keeps the refusal a tool error at
+/// preparation instead of a failed commit.
+void _requireUtf8Text(String path, String text) {
+  if (hasUnpairedSurrogate(text)) {
+    throw OkfBundleChangeException(
+      'Bundle path $path holds an unpaired surrogate, which UTF-8 cannot '
+      'encode.',
+    );
+  }
+}
+
+bool _isReservedFilePath(String path) {
+  try {
+    validateBundlePath(path);
+  } on FormatException {
+    return false;
+  }
+  final name = p.posix.basename(path);
+  return name == 'index.md' || name == 'log.md';
 }
 
 Future<void> _validateCandidatePaths(
@@ -211,8 +342,8 @@ Future<void> _validateCandidatePaths(
 /// An immutable view of the complete candidate prepared for a bundle write.
 ///
 /// Concept values are the exact serialized Markdown bytes represented by the
-/// candidate. [toBundle] returns a detached in-memory copy for downstream
-/// inspection; changing that copy cannot change a prepared write.
+/// candidate. [toBundle] and [toLoadResult] return detached in-memory copies
+/// for downstream inspection; changing a copy cannot change a prepared write.
 final class OkfPreparedCandidate {
   factory OkfPreparedCandidate._fromSnapshot({
     required OkfBundleLoadResult loaded,
@@ -223,6 +354,12 @@ final class OkfPreparedCandidate {
         changedFiles[path] ?? source.text(path) ?? fallback;
 
     return OkfPreparedCandidate._(
+      rootPath: loaded.rootPath,
+      loadReport: OkfReport(
+        findings: loaded.report.findings.where(
+          (finding) => !changedFiles.containsKey(finding.location?.path),
+        ),
+      ),
       concepts: <String, String>{
         for (final entry in loaded.documents.entries)
           entry.key: preparedText(entry.key, entry.value.serialize()),
@@ -246,14 +383,23 @@ final class OkfPreparedCandidate {
   }
 
   OkfPreparedCandidate._({
+    required String rootPath,
+    required OkfReport loadReport,
     required Map<String, String> concepts,
     required Map<String, String> indexes,
     required Map<String, String> logs,
     required Set<String> assets,
-  }) : concepts = Map<String, String>.unmodifiable(concepts),
+  }) : _rootPath = rootPath,
+       _loadReport = loadReport,
+       concepts = Map<String, String>.unmodifiable(concepts),
        indexes = Map<String, String>.unmodifiable(indexes),
        logs = Map<String, String>.unmodifiable(logs),
        assets = Set<String>.unmodifiable(assets);
+
+  final String _rootPath;
+
+  /// Source load findings for files the candidate does not replace.
+  final OkfReport _loadReport;
 
   final Map<String, String> concepts;
   final Map<String, String> indexes;
@@ -269,6 +415,40 @@ final class OkfPreparedCandidate {
     logs: logs,
     assets: assets,
   );
+
+  /// The candidate as [OkfBundleLoader.inspect] would read it once committed.
+  ///
+  /// Source files that failed to load and that the candidate does not replace
+  /// keep their findings in [OkfBundleLoadResult.report], so downstream checks
+  /// see the same inventory a later load would.
+  OkfBundleLoadResult toLoadResult() {
+    List<String> sorted(Iterable<String> paths) => paths.toList()..sort();
+    final documents = <String, OkfDocument>{
+      for (final path in sorted(concepts.keys))
+        path: OkfDocument.parse(concepts[path]!, sourcePath: path),
+    };
+    final sortedIndexes = <String, String>{
+      for (final path in sorted(indexes.keys)) path: indexes[path]!,
+    };
+    final sortedLogs = <String, String>{
+      for (final path in sorted(logs.keys)) path: logs[path]!,
+    };
+    final sortedAssets = sorted(assets);
+    return OkfBundleLoadResult(
+      rootPath: _rootPath,
+      bundle: OkfBundle.fromDocuments(
+        documents,
+        indexes: sortedIndexes,
+        logs: sortedLogs,
+        assets: sortedAssets,
+      ),
+      documents: documents,
+      indexes: sortedIndexes,
+      logs: sortedLogs,
+      assets: sortedAssets,
+      report: _loadReport,
+    );
+  }
 }
 
 /// Opaque proof that an exact candidate passed OKF Spec validation.
@@ -291,9 +471,17 @@ sealed class OkfBundlePreparation {
 }
 
 final class OkfPreparationRefused extends OkfBundlePreparation {
-  const OkfPreparationRefused({required this.validation}) : super._();
+  const OkfPreparationRefused({required this.validation, this.candidate})
+    : super._();
 
   final OkfSpecValidation validation;
+
+  /// The refused candidate, after any projection, so a caller can show or
+  /// inspect what the change would have written.
+  ///
+  /// [OkfBundleChangeApplier.prepare] always sets it. It is nullable only
+  /// because this constructor was public before the field existed.
+  final OkfPreparedCandidate? candidate;
 }
 
 final class OkfPreparationReady extends OkfBundlePreparation {
@@ -326,10 +514,18 @@ final class OkfBundleApplied extends OkfBundleApplication {
 /// A candidate refused because it contains a Spec error.
 final class OkfBundleApplicationRefused extends OkfBundleApplication {
   /// Creates a refusal carrying the closed Spec judgment.
-  const OkfBundleApplicationRefused({required this.validation}) : super._();
+  const OkfBundleApplicationRefused({required this.validation, this.candidate})
+    : super._();
 
   /// The non-conformant candidate's Spec judgment.
   final OkfSpecValidation validation;
+
+  /// The refused candidate, after any projection, so a caller can show or
+  /// inspect what the change would have written.
+  ///
+  /// [OkfBundleChangeApplier.apply] always sets it. It is nullable only
+  /// because this constructor was public before the field existed.
+  final OkfPreparedCandidate? candidate;
 }
 
 final class OkfStalePreparedChangeException implements Exception {

@@ -17,10 +17,10 @@ conformance failure. “Advisory” is surfaced guidance that never changes
 | §5.2, §11 | Treat a bare `verified` mapping as one event. | Conformant; one normalized verification. | `test/conformance_test.dart`, `test/metadata_test.dart` |
 | §5.3, §11 | Missing optional provenance, trust, lifecycle, and computation families are accepted. | Conformant. | `test/conformance_test.dart` |
 | §6.1, §11 | Broken cross-links are accepted. | Conformant; graph retains an unresolved edge. | `test/conformance_test.dart`, `test/graph_test.dart` |
-| §8, §11.3 | A present `index.md` follows the index structure. | `okf/invalid-reserved-document` or an `okf/*index*` error. | `test/validator_test.dart` |
+| §8, §11.3 | A present `index.md` follows the index structure, as okf reads it ([below](#reserved-file-readings)). | `okf/invalid-reserved-document` or an `okf/*index*` error. | `test/validator_test.dart` |
 | §8, §11 | Missing indexes are accepted. | Conformant. | `test/conformance_test.dart` |
 | §8, §11 | Index link destinations are percent-encoded or angle-bracketed; raw whitespace, parentheses, and angle brackets are surfaced guidance. | `okf/non-portable-index-link` advisory; still conformant. | `test/validator_test.dart`, `test/index_log_test.dart` |
-| §9, §11.3 | A present `log.md` follows the log structure and uses ISO dates. | `okf/invalid-reserved-document` or an `okf/*log*` error. | `test/validator_test.dart`, `test/conformance_test.dart` |
+| §9, §11.3 | A present `log.md` follows the log structure, as okf reads it ([below](#reserved-file-readings)), and uses ISO dates. | `okf/invalid-reserved-document` or an `okf/*log*` error. | `test/validator_test.dart`, `test/conformance_test.dart` |
 | §10, §11 | Optional Attested Computation shape deviations are soft guidance. | Advisory findings only. | `test/validator_test.dart` |
 | §12 | Unknown declared versions are consumed best-effort. | `okf/unsupported-okf-version` advisory; still conformant. | `test/conformance_test.dart`, `test/validator_test.dart` |
 
@@ -28,6 +28,41 @@ The public `OkfSpecValidator` has a const, zero-argument constructor and no
 configuration seam. `OkfBundleLoadResult.validate` merges load and fixed Spec
 findings into the same `OkfReport`. CLI, MCP, CI, and prepared-write parity are
 covered in their adapter slices against this shared result.
+
+## Reserved-file readings
+
+§8 and §9 define `index.md` and `log.md` largely by example. The closed
+validator reads those examples as the required structure, so it refuses some
+reserved files the Spec's text allows. These readings are fixed, like every
+other rule (ADR-0002):
+
+| Rule | okf requires | Spec text |
+| --- | --- | --- |
+| `okf/invalid-index-structure` | An index body holds only level-one headings and list entries of the form `* [Title](link)`, optionally followed by ` - description`; a `-` bullet works as well as `*`. Prose lines, other heading levels, other list markers such as `+` or `1.`, and unlinked entries are errors. | §8 shows the heading level and the entry form only in its example. |
+| `okf/index-entry-before-section` | Every entry follows a level-one section heading. | §8 groups entries "under a heading", of no stated level. |
+| `okf/empty-index-section` | Every section holds at least one entry. | §8 sets no minimum per section. |
+| `okf/invalid-log-frontmatter` | A log has no frontmatter. | §8 and §12 forbid frontmatter in indexes, apart from the root `okf_version`; §9 does not mention it. |
+| `okf/missing-log-title` | A log begins with one level-one title. | The title appears only in §9's example. |
+| `okf/invalid-log-structure` | A log body holds only that title, `## YYYY-MM-DD` date headings and `*` or `-` list entries. Prose lines, other heading levels and other list markers are errors. | §9 calls log entries "prose" and shows the heading level and list form only in its example. |
+| `okf/missing-log-date` | A log has at least one date heading. | §9 requires no entry. |
+| `okf/empty-log-date` | Every date heading has at least one entry. | §9 sets no minimum per date. |
+
+The other reserved-file rules restate the Spec's text:
+`okf/missing-index-section` (one or more sections),
+`okf/invalid-index-frontmatter` (no frontmatter but a root `okf_version`),
+`okf/invalid-log-date` (ISO 8601 `YYYY-MM-DD` dates),
+`okf/log-entry-before-date` (date-grouped entries) and
+`okf/log-not-newest-first` (newest first).
+
+Validation does not check that an index is complete either. okf accepts an
+index that omits concepts or subdirectories, links to missing files or leaves
+out descriptions. §8 says an index enumerates its directory's contents but not
+which concepts and subdirectories it must list, §11 makes missing `index.md`
+files and broken cross-links non-rejectable, and §8 only recommends
+descriptions, so okf leaves completeness to the producer. A producer that
+writes its own `index.md` or `log.md`, directly or through a reserved-file
+projection, must therefore meet okf's structure rather than only the Spec's
+text, and alone decides what its index lists.
 
 ## Package contracts
 

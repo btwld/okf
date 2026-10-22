@@ -33,7 +33,7 @@ Install the command-line tool with Homebrew:
 brew install btwld/tap/okf
 ```
 
-With Dart 3.9 or later, add the library:
+With Dart 3.11 or later, add the library:
 
 ```console
 dart pub add okf
@@ -94,7 +94,7 @@ Gate a repository on OKF Spec conformance with one step and no configuration:
 
 ```yaml
 steps:
-  - uses: btwld/okf@v0.5.0
+  - uses: btwld/okf@v0.5.1
 ```
 
 The action downloads the released `okf` archive for the ref in `uses`, unpacks
@@ -108,7 +108,7 @@ invocation, so CI reaches the same verdict as the command line. Inputs:
 Releases attach an `okf-<version>-<os>-<arch>.tar.gz` archive per platform, so
 the action runs on Linux and macOS runners.
 
-The Dart library and CLI are tested on Linux and Windows with Dart 3.9 and
+The Dart library and CLI are tested on Linux and Windows with Dart 3.11 and
 the current stable SDK. Windows support does not include this composite
 action or a prebuilt release binary; install the CLI through Dart on Windows.
 
@@ -197,11 +197,23 @@ the file to `.gitignore` if you do not want to commit it. Its name is exported
 as `okfBundleLockFileName` for tools that walk bundle directories directly.
 
 If a read starts before the first writer creates the file, it checks again and
-repeats under a shared lock when necessary. Locking is advisory, and POSIX file
-locks are process-scoped; applications using multiple isolates must serialize
-their own bundle access. Formatting a nested file cannot identify the enclosing
-bundle root, so it instead refuses to write or report against content that
-changed after it was read.
+repeats under a shared lock when necessary. Formatting a nested file cannot
+identify the enclosing bundle root, so it instead refuses to write or report
+against content that changed after it was read.
+
+Locking is advisory. Within one isolate, operations on a bundle queue behind
+each other; across processes, the lock file excludes them. On POSIX the lock
+is an `fcntl` record lock, which belongs to the process, not to an isolate:
+two isolates in one process do not exclude each other, and closing any handle
+on the lock file releases every claim the process holds, so a read finishing
+in one isolate can silently drop another isolate's write lock. **Run every
+okf operation on a bundle — loads, validation, graphs, formatting and writes —
+in one isolate per process.** `okf_io.dart` exports `OkfBundleLock` so
+applications can run their own reads and writes under the same claims;
+`OkfBundleLock.write` held around `prepare` and `commit` keeps the source from
+changing between them. Await every bundle operation inside the action you pass
+it: work that outlives the action, such as an unawaited future, still counts as
+holding the claim while no lock is held.
 
 ## Library
 
@@ -221,7 +233,17 @@ verified: {by: "human:reviewer", at: "2026-07-27T12:00:00Z"}
 ''');
 
 print(document.metadata.trustTier.wireValue); // human-reviewed
+print(document.bodyStartLine); // 7
 ```
+
+`bodyStartLine` is the 1-based line of the parsed text on which `body`
+begins, so a host can cite body text by file line: line `n` of `body` is line
+`bodyStartLine + n - 1` of the source. A final line break ends the body's last
+line rather than starting another, so a body of `k` lines ends on line
+`bodyStartLine + k - 1`, the source's last line. It counts LF, CRLF and a lone
+CR as one line break each, as parsing does, and a byte order mark as none.
+Without frontmatter it is 1, and it is `null` for a document built with the
+constructor or `copyWith`.
 
 Filesystem operations live in the separate `okf_io.dart` library:
 
@@ -275,6 +297,40 @@ switch (result) {
 }
 ```
 
+A projection lets a caller rewrite the reserved `index.md` and `log.md` files
+of the same candidate, for example to apply its own index conventions or to
+record its own log entry. Projected texts are validated and committed with the
+rest of the change; a `null` text keeps the source file, and any path other
+than an `index.md` or `log.md` throws `OkfBundleChangeException`. `apply`
+takes the same `project` argument, and the refusals of both `prepare` and
+`apply` carry the projected candidate. Dropping the `index.md` of a directory
+the change adds leaves its regenerated ancestors linking to it, so project
+those too. With no changes, a projection repairs reserved files on its own:
+
+```dart
+final repair = await writer.prepare(
+  'path/to/bundle',
+  OkfBundleChangeSet(const <OkfBundleChange>[]),
+  project: (input) {
+    final base = input.base.bundle;
+    return <String, String?>{
+      for (final entry in const OkfIndexGenerator().generate(base).entries)
+        if (base.indexFiles.containsKey(entry.key)) entry.key: entry.value,
+    };
+  },
+);
+```
+
+`OkfPreparedCandidate.toLoadResult()` reads a candidate as a later load of the
+committed bundle would, so checks written against `OkfBundleLoadResult` can
+judge it before commit. `okfVersion` is this package's version, and
+`okfIndexGeneratorRevision` identifies the generator's output bytes: every
+release with the same revision generates the same indexes for the same
+bundle. It is `0.5.0`, the baseline the promise starts from, and a change to
+the output ships only in a minor release that sets the revision to its own
+version, so compare generated indexes against it rather than against a patch
+range.
+
 See [`example/okf.dart`][example] for a complete command-line example.
 
 ### Findings and rules
@@ -298,6 +354,17 @@ if (validation.isConformant) {
   // Run downstream checks against the same candidate separately.
 }
 ```
+
+The reserved-file rules read §8 and §9 more strictly than the Spec's text. An
+index may hold only level-one section headings and linked list entries, with
+no prose lines or empty sections (`okf/invalid-index-structure`,
+`okf/index-entry-before-section`, `okf/empty-index-section`). A log needs a
+level-one title, no frontmatter, at least one `## YYYY-MM-DD` date heading and
+list entries under every date, with no prose lines (`okf/missing-log-title`,
+`okf/invalid-log-frontmatter`, `okf/missing-log-date`, `okf/empty-log-date`,
+`okf/invalid-log-structure`). Validation does not check that an index lists
+every concept. So okf can refuse an index or log the Spec allows, and accepts
+an incomplete index; the [conformance matrix][matrix] sets out each reading.
 
 ## Compatibility principles
 
@@ -403,3 +470,4 @@ Apache License 2.0.
 
 [spec]: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/62432a095456147ee71e70ac6e4dc0d2dea3ac30/okf/SPEC.md
 [example]: https://github.com/btwld/okf/blob/main/example/okf.dart
+[matrix]: https://github.com/btwld/okf/blob/main/docs/conformance-matrix.md#reserved-file-readings

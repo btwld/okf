@@ -25,9 +25,13 @@ Release notes come from the first `## <version>` section of `CHANGELOG.md`.
 ## Release process
 
 1. Bump `version:` in `pubspec.yaml`
-2. Update `lib/src/version.dart` and the `btwld/okf@vX.Y.Z` reference in
-   `README.md` to the same value (`dart test test/ci_gate_test.dart` checks all
-   three agree)
+2. Update `okfVersion` in `lib/src/version.dart` and the `btwld/okf@vX.Y.Z`
+   reference in `README.md` to the same value (`test/ci/gate_test.dart` and
+   `test/cli_test.dart` check that all three agree). Leave
+   `okfIndexGeneratorRevision` alone unless the release changes
+   `OkfIndexGenerator`'s output; then the release must be a minor one, which
+   sets the revision to its own version and updates the golden in
+   `test/index_generator_test.dart` that guards the output (ADR-0009)
 3. Add the matching `## X.Y.Z` section at the top of `CHANGELOG.md`
 4. Commit
 5. `git tag vX.Y.Z && git push origin vX.Y.Z`
