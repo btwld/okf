@@ -125,6 +125,87 @@ owner: {name: ana}
       );
     });
 
+    test('keeps a changed block scalar a literal block', () {
+      const source = '''
+---
+type: Metric
+description: |
+  Recognized revenue.
+  # Not a comment.
+summary: >-  # folded
+    Folded
+    text.
+steps:
+  - |
+    Draft.
+  - Sign.
+owner: finance
+---
+''';
+
+      expect(
+        _rewrite(source, (frontmatter) {
+          frontmatter['description'] = 'Recognized revenue.\n\n  Indented.\n';
+          frontmatter['summary'] = 'Folded\ntext';
+          frontmatter['steps'] = <Object?>['Draft.\nReview.\n\n', 'Sign.'];
+        }),
+        '''
+---
+type: Metric
+description: |
+  Recognized revenue.
+
+    Indented.
+summary: |-  # folded
+    Folded
+    text
+steps:
+  - |+
+    Draft.
+    Review.
+
+  - Sign.
+owner: finance
+---
+''',
+      );
+    });
+
+    test('writes a block scalar as a scalar when a literal block cannot '
+        'hold it', () {
+      const source = '''
+---
+type: Metric
+a: |
+  old
+b: |
+  old
+c: |
+  old
+d: |
+  old
+---
+''';
+
+      expect(
+        _rewrite(source, (frontmatter) {
+          frontmatter['a'] = 'one line';
+          frontmatter['b'] = '  leading space\n';
+          frontmatter['c'] = 'closes\n---\nthe block\n';
+          frontmatter['d'] = 'tab\u0007bell\n';
+        }),
+        '''
+---
+type: Metric
+a: one line
+b: "  leading space\\n"
+c: "closes\\n---\\nthe block\\n"
+d: "tab\\u0007bell\\n"
+---
+''',
+      );
+    });
+
     test('keeps key order and does not move tags', () {
       const source = '''
 ---

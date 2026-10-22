@@ -294,6 +294,56 @@ String _canonicalBody(String body) {
 
 final RegExp _lineBreak = RegExp('[\r\n]');
 
+/// The `|` or `>` that starts a block scalar's header, with its chomping and
+/// indentation indicators. A tag or anchor before it does not match.
+final RegExp _blockScalarIndicators = RegExp('^[|>][-+0-9]*');
+
+/// The chomping indicator and lines of a literal block without an
+/// indentation indicator that reads back as [value], or null when there is
+/// none.
+///
+/// The value needs a line break, a first line that starts with something
+/// other than whitespace, no line that reads as a `---` delimiter (it would
+/// close the frontmatter block), and only characters a YAML block scalar
+/// holds as they are: no control character but tab and line feed, no
+/// U+2028, U+2029 or U+FEFF, and no unpaired surrogate. Its final line
+/// breaks choose the indicator: none is `-`, one is the default, and more
+/// are `+`, with a line for each one after the first.
+({String chomping, List<String> lines})? _literalBlock(String value) {
+  if (!value.contains('\n') || value.startsWith(RegExp(r'\s'))) {
+    return null;
+  }
+  for (final rune in value.runes) {
+    if (rune < 0x20 && rune != 0x09 && rune != 0x0A ||
+        rune >= 0x7F && rune <= 0x9F ||
+        rune == 0x2028 ||
+        rune == 0x2029 ||
+        rune == 0xFEFF ||
+        rune >= 0xD800 && rune <= 0xDFFF ||
+        rune == 0xFFFE ||
+        rune == 0xFFFF) {
+      return null;
+    }
+  }
+  final lines = value.split('\n');
+  if (lines.any((line) => line.trim() == '---')) {
+    return null;
+  }
+  var breaks = 0;
+  while (breaks < lines.length - 1 &&
+      lines[lines.length - 1 - breaks].isEmpty) {
+    breaks++;
+  }
+  return (
+    chomping: switch (breaks) {
+      0 => '-',
+      1 => '',
+      _ => '+',
+    },
+    lines: breaks == 0 ? lines : lines.sublist(0, lines.length - 1),
+  );
+}
+
 /// An in-place edit could not be made; the caller tries a coarser one.
 final class _NotInPlace implements Exception {
   const _NotInPlace();
@@ -461,8 +511,10 @@ final class _Edit {
 
 /// One attempt at editing the frontmatter in place.
 ///
-/// With [nested] it edits inside block and flow collections; without it,
-/// it replaces the whole value of each changed top-level key.
+/// With [nested] it edits inside block and flow collections and keeps a
+/// changed block scalar a literal block; without it, it replaces the whole
+/// value of each changed top-level key and writes every scalar as
+/// [OkfYamlEmitter.scalar] does.
 final class _InPlaceEdit {
   _InPlaceEdit(this.layout, this.emitter, {required this.nested});
 
@@ -547,7 +599,8 @@ final class _InPlaceEdit {
     int column,
   ) {
     if (_editInside(value, old, replacement) ||
-        _replaceInline(value, replacement)) {
+        _replaceInline(value, replacement) ||
+        _replaceBlockScalar(value, replacement)) {
       return;
     }
     // Re-emit the value after the key, through the end of its last line.
@@ -738,6 +791,67 @@ final class _InPlaceEdit {
     return true;
   }
 
+  /// Writes a changed literal or folded block scalar as a literal block at
+  /// its indentation, keeping its header line's comment, when the new value
+  /// is a string with a line break that such a block holds exactly.
+  ///
+  /// Only the in-place attempt does this; the attempt that replaces whole
+  /// top-level values writes the string as [OkfYamlEmitter.scalar] does.
+  bool _replaceBlockScalar(YamlNode node, Object? replacement) {
+    if (!nested ||
+        node is! YamlScalar ||
+        node.style != ScalarStyle.LITERAL && node.style != ScalarStyle.FOLDED ||
+        replacement is! String) {
+      return false;
+    }
+    final block = _literalBlock(replacement);
+    final start = _startOf(node);
+    final header = layout.yamlLine(start.line).substring(start.column);
+    final indicators = _blockScalarIndicators.firstMatch(header);
+    final indentation = _contentIndentation(node);
+    if (block == null ||
+        indicators == null ||
+        indentation == null ||
+        indentation == 0) {
+      return false;
+    }
+    final (:chomping, :lines) = block;
+    _edits.add(
+      _Edit(
+        layout.offset(start),
+        layout.lineEnd(_end(node).line),
+        <String>[
+          '|$chomping${header.substring(indicators.end)}',
+          for (final line in lines)
+            line.isEmpty ? '' : '${' ' * indentation}$line',
+        ].join(_eol),
+      ),
+    );
+    return true;
+  }
+
+  /// The fewest spaces before a line of a block scalar's text, or null when
+  /// it has no line with anything but spaces.
+  int? _contentIndentation(YamlScalar node) {
+    int? indentation;
+    for (
+      var line = node.span.start.line + 1;
+      line <= node.span.end.line;
+      line++
+    ) {
+      final text = layout.yamlLine(line);
+      var spaces = 0;
+      while (spaces < text.length && text.codeUnitAt(spaces) == 0x20) {
+        spaces++;
+      }
+      if (spaces < text.length &&
+          (indentation == null || spaces < indentation)) {
+        indentation = spaces;
+      }
+    }
+    return indentation;
+  }
+
   bool _sequence(YamlList node, List<Object?> old, List<Object?> replacement) {
     final dash = node.span.start.column;
     if (!layout.yamlLine(node.span.start.line).startsWith('-', dash)) {
@@ -766,7 +880,8 @@ final class _InPlaceEdit {
 
   void _replaceItem(YamlNode item, Object? old, Object? replacement, int dash) {
     if (_editInside(item, old, replacement) ||
-        _replaceInline(item, replacement)) {
+        _replaceInline(item, replacement) ||
+        _replaceBlockScalar(item, replacement)) {
       return;
     }
     // An omitted item has an empty span on its `-`, so it is written after
