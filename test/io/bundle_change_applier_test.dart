@@ -774,6 +774,7 @@ title: Note
     });
 
     test('apply commits or refuses a projected candidate', () async {
+      final before = await _snapshot(root);
       final refused = await changes.apply(
         root.path,
         _createChurn(),
@@ -782,6 +783,15 @@ title: Note
         },
       );
       expect(refused, isA<OkfBundleApplicationRefused>());
+      final refusal = refused as OkfBundleApplicationRefused;
+      expect(
+        refusal.validation.report.findings.map((finding) => finding.id.value),
+        contains('okf/invalid-index-structure'),
+      );
+      // apply returns the refused projected candidate, as prepare does.
+      expect(refusal.candidate!.indexes['metrics/index.md'], 'Not an index.\n');
+      expect(refusal.candidate!.concepts, contains('metrics/churn.md'));
+      expect(await _snapshot(root), before);
 
       final applied = await changes.apply(
         root.path,

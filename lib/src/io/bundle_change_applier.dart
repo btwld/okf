@@ -58,8 +58,14 @@ final class OkfBundleChangeApplier {
       OkfPreparationReady(prepared: final prepared) => OkfBundleApplied(
         result: await _commitLocked(prepared),
       ),
-      OkfPreparationRefused(validation: final validation) =>
-        OkfBundleApplicationRefused(validation: validation),
+      OkfPreparationRefused(
+        validation: final validation,
+        candidate: final candidate,
+      ) =>
+        OkfBundleApplicationRefused(
+          validation: validation,
+          candidate: candidate,
+        ),
     };
   });
 
@@ -472,7 +478,8 @@ final class OkfPreparationRefused extends OkfBundlePreparation {
   /// The refused candidate, after any projection, so a caller can show or
   /// inspect what the change would have written.
   ///
-  /// [OkfBundleChangeApplier.prepare] always sets it.
+  /// [OkfBundleChangeApplier.prepare] always sets it. It is nullable only
+  /// because this constructor was public before the field existed.
   final OkfPreparedCandidate? candidate;
 }
 
@@ -506,10 +513,18 @@ final class OkfBundleApplied extends OkfBundleApplication {
 /// A candidate refused because it contains a Spec error.
 final class OkfBundleApplicationRefused extends OkfBundleApplication {
   /// Creates a refusal carrying the closed Spec judgment.
-  const OkfBundleApplicationRefused({required this.validation}) : super._();
+  const OkfBundleApplicationRefused({required this.validation, this.candidate})
+    : super._();
 
   /// The non-conformant candidate's Spec judgment.
   final OkfSpecValidation validation;
+
+  /// The refused candidate, after any projection, so a caller can show or
+  /// inspect what the change would have written.
+  ///
+  /// [OkfBundleChangeApplier.apply] always sets it. It is nullable only
+  /// because this constructor was public before the field existed.
+  final OkfPreparedCandidate? candidate;
 }
 
 final class OkfStalePreparedChangeException implements Exception {

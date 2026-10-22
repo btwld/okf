@@ -301,12 +301,11 @@ A projection lets a caller rewrite the reserved `index.md` and `log.md` files
 of the same candidate, for example to apply its own index conventions or to
 record its own log entry. Projected texts are validated and committed with the
 rest of the change; a `null` text keeps the source file, and any path other
-than an `index.md` or `log.md` throws `OkfBundleChangeException`. `prepare`'s
-refusal carries the projected candidate. `apply` takes the same `project`
-argument and returns only the validation. Dropping the `index.md` of a
-directory the change adds leaves its regenerated ancestors linking to it, so
-project those too. With no changes, a
-projection repairs reserved files on its own:
+than an `index.md` or `log.md` throws `OkfBundleChangeException`. `apply`
+takes the same `project` argument, and the refusals of both `prepare` and
+`apply` carry the projected candidate. Dropping the `index.md` of a directory
+the change adds leaves its regenerated ancestors linking to it, so project
+those too. With no changes, a projection repairs reserved files on its own:
 
 ```dart
 final repair = await writer.prepare(

@@ -9,8 +9,11 @@
   any other path throws `OkfBundleChangeException`. An empty change set with a
   projection repairs reserved files on their own. `apply` takes the same
   `project` argument. See ADR-0009.
-- Add `OkfPreparationRefused.candidate`, the refused candidate after any
-  projection, so a caller can show what a refused change would have written.
+- Add `candidate` to `OkfPreparationRefused` and
+  `OkfBundleApplicationRefused`: the refused candidate after any projection,
+  so a caller can show what a refused change would have written. `prepare`
+  and `apply` always set it; it is nullable only because both constructors
+  were already public.
 - Throw `OkfBundleChangeException` from `prepare` for a text that holds an
   unpaired surrogate, whether a change set or a projection produced it.
   Previously the writer replaced the surrogate with U+FFFD, so the committed
