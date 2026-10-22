@@ -94,7 +94,7 @@ Gate a repository on OKF Spec conformance with one step and no configuration:
 
 ```yaml
 steps:
-  - uses: btwld/okf@v0.5.1
+  - uses: btwld/okf@v0.6.0
 ```
 
 The action downloads the released `okf` archive for the ref in `uses`, unpacks

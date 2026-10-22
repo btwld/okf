@@ -1,3 +1,39 @@
+## 0.6.0
+
+- Edit existing concepts in place. `OkfUpdateConceptChange`,
+  `OkfLinkConceptsChange` and `OkfDeprecateConceptChange` used to re-emit the
+  whole concept in canonical form, which turned flow style into block style,
+  moved keys such as `tags` and dropped comments. They now keep the exact
+  bytes of every frontmatter key they do not change, and of the body unless
+  an update replaces it: a changed value is replaced where it stands, a
+  changed flow collection has its changed values replaced and new entries
+  added after its last one (one that loses an entry is rewritten whole on one
+  line), a changed `|` or `>` block scalar stays a literal
+  block when its new value has a line break, a changed block mapping is
+  edited entry by entry, a removed key removes only its own lines, a new key
+  goes directly after the last entry of its mapping, and a link appends its
+  `sources` item after the last one. New lines take the file's line break,
+  so CRLF files stay CRLF, and a concept file that begins with a UTF-8 byte
+  order mark keeps it. Every edit is parsed again and must read back as the
+  requested mapping; otherwise the changed top-level values, and failing that
+  the whole mapping, are re-emitted, as the whole mapping is for frontmatter
+  written as one `{...}` mapping or with YAML aliases, explicit `?` keys or
+  collection keys. An update whose result equals the concept writes nothing,
+  now also when it only reorders a nested mapping's keys. An edit that cannot
+  be written so that it reads back, such as a body-only concept's new body
+  whose first line is `---`, throws `OkfBundleChangeException` from
+  `prepare`. New concepts, `serialize` and `okf format` keep the canonical
+  form. See ADR-0010.
+- Add `OkfDocument.rewriteSource`, which performs that edit on any parsed
+  document, and `OkfDocument.sourceText`, the text it edits: the exact text
+  given to `OkfDocument.parse`, or `null` for a document built with the
+  constructor or `copyWith`.
+- Add `OkfYamlEmitter.scalar`, which returns the text a scalar is written as,
+  by `emit` and by `rewriteSource` alike, so a host can predict how a string
+  value will look: plain when it is unambiguous, otherwise its JSON string
+  literal. `rewriteSource` departs from it only to keep a multi-line string
+  in a literal block it replaces.
+
 ## 0.5.1
 
 - Add a reserved-file projection to `OkfBundleChangeApplier.prepare`. The
@@ -51,39 +87,6 @@
   mark or blank lines around the frontmatter. Concepts loaded by
   `OkfBundleLoader` or read from an `OkfPreparedCandidate` carry it; documents
   built with the constructor or `copyWith` have none.
-- Edit existing concepts in place. `OkfUpdateConceptChange`,
-  `OkfLinkConceptsChange` and `OkfDeprecateConceptChange` used to re-emit the
-  whole concept in canonical form, which turned flow style into block style,
-  moved keys such as `tags` and dropped comments. They now keep the exact
-  bytes of every frontmatter key they do not change, and of the body unless
-  an update replaces it: a changed value is replaced where it stands, a
-  changed flow collection has its changed values replaced and new entries
-  added after its last one (one that loses an entry is rewritten whole on one
-  line), a changed `|` or `>` block scalar stays a literal
-  block when its new value has a line break, a changed block mapping is
-  edited entry by entry, a removed key removes only its own lines, a new key
-  goes directly after the last entry of its mapping, and a link appends its
-  `sources` item after the last one. New lines take the file's line break,
-  so CRLF files stay CRLF, and a concept file that begins with a UTF-8 byte
-  order mark keeps it. Every edit is parsed again and must read back as the
-  requested mapping; otherwise the changed top-level values, and failing that
-  the whole mapping, are re-emitted, as the whole mapping is for frontmatter
-  written as one `{...}` mapping or with YAML aliases, explicit `?` keys or
-  collection keys. An update whose result equals the concept writes nothing,
-  now also when it only reorders a nested mapping's keys. An edit that cannot
-  be written so that it reads back, such as a body-only concept's new body
-  whose first line is `---`, throws `OkfBundleChangeException` from
-  `prepare`. New concepts, `serialize` and `okf format` keep the canonical
-  form. See ADR-0010.
-- Add `OkfDocument.rewriteSource`, which performs that edit on any parsed
-  document, and `OkfDocument.sourceText`, the text it edits: the exact text
-  given to `OkfDocument.parse`, or `null` for a document built with the
-  constructor or `copyWith`.
-- Add `OkfYamlEmitter.scalar`, which returns the text a scalar is written as,
-  by `emit` and by `rewriteSource` alike, so a host can predict how a string
-  value will look: plain when it is unambiguous, otherwise its JSON string
-  literal. `rewriteSource` departs from it only to keep a multi-line string
-  in a literal block it replaces.
 - Raise the minimum supported Dart SDK from 3.9 to 3.11 (#62).
 - Turn `OkfGraphResolution.fromWireValue` from a static method into a factory
   constructor (#65). Calls and tear-offs compile unchanged.
