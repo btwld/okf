@@ -726,6 +726,31 @@ description: Recognized monthly revenue.
       );
     });
 
+    test('an edit that cannot be written so is a tool error', () async {
+      await _write(root, 'notes/plain.md', '# Plain\n');
+      final before = await _snapshot(root);
+
+      await expectLater(
+        changes.prepare(
+          root.path,
+          OkfBundleChangeSet(<OkfBundleChange>[
+            OkfUpdateConceptChange(
+              id: OkfConceptId('notes/plain'),
+              body: '---\ntype: Injected\n---\n',
+            ),
+          ]),
+        ),
+        throwsA(
+          isA<OkfBundleChangeException>().having(
+            (error) => error.message,
+            'message',
+            allOf(contains('notes/plain'), contains('--- delimiter')),
+          ),
+        ),
+      );
+      expect(await _snapshot(root), before);
+    });
+
     test('a body update keeps the frontmatter bytes', () async {
       await commit(
         OkfUpdateConceptChange(

@@ -487,6 +487,54 @@ tags: [finance]  # kept
       }
     });
 
+    test('keeps a byte order mark in front of an added frontmatter block', () {
+      final document = OkfDocument.parse('\uFEFF# Revenue\n');
+
+      expect(
+        document.rewriteSource(
+          frontmatter: const <String, Object?>{'type': 'Metric'},
+        ),
+        '\uFEFF---\ntype: Metric\n---\n\n# Revenue\n',
+      );
+      expect(
+        document.rewriteSource(
+          frontmatter: const <String, Object?>{'type': 'Metric'},
+          body: '# Revenue',
+        ),
+        '---\ntype: Metric\n---\n\n# Revenue\n',
+        reason: 'a body-only document holds the mark in its body',
+      );
+    });
+
+    test('refuses a body that would read back as a frontmatter block', () {
+      for (final body in const <String>[
+        '---\ntype: Injected\n---\nhi\n',
+        '---\nno close\n',
+        '  ---  \nhi\n',
+      ]) {
+        expect(
+          () => OkfDocument.parse('# Plain body\n').rewriteSource(body: body),
+          throwsA(isA<OkfYamlEncodeException>()),
+          reason: body,
+        );
+        expect(
+          () => OkfDocument(
+            body: 'Plain.',
+            hasFrontmatter: false,
+          ).rewriteSource(body: body),
+          throwsA(isA<OkfYamlEncodeException>()),
+          reason: body,
+        );
+        expect(
+          OkfDocument.parse(
+            '---\ntype: Metric\n---\n',
+          ).rewriteSource(body: body),
+          '---\ntype: Metric\n---\n\n$body',
+          reason: 'after a frontmatter block it is an ordinary body',
+        );
+      }
+    });
+
     test('writes a frontmatter block in front of a body-only document', () {
       final document = OkfDocument.parse('# Revenue\r\n\r\nText.');
 

@@ -30,11 +30,15 @@ String rewriteOkfDocumentSource(
       body: body ?? currentBody,
       hasFrontmatter: writesFrontmatter,
     ).serialize(emitter: emitter);
-    if (!writesFrontmatter ||
-        _readsBack(text, target, _canonicalBody(body ?? currentBody))) {
+    if (_readsBack(
+      text,
+      target,
+      _canonicalBody(body ?? currentBody),
+      hasFrontmatter: writesFrontmatter,
+    )) {
       return text;
     }
-    throw _unwritable(frontmatter);
+    throw writesFrontmatter ? _unwritable(frontmatter) : _unwritableBody(text);
   }
 
   final original = OkfDocument.parse(source);
@@ -47,16 +51,26 @@ String rewriteOkfDocumentSource(
   final expectedBody = newBody ?? original.body;
 
   if (!original.hasFrontmatter) {
-    final rest = newBody == null ? source : layout.withLineEndings(newBody);
     if (target.isEmpty) {
-      return rest;
+      final text = newBody == null ? source : layout.withLineEndings(newBody);
+      if (_readsBack(text, target, expectedBody, hasFrontmatter: false)) {
+        return text;
+      }
+      throw _unwritableBody(text);
     }
-    // There is no block to edit, so one is written in front of the text.
+    // There is no block to edit, so one is written in front of the text. A
+    // byte order mark that begins the kept text stays in front of it all.
+    final mark = newBody == null && source.startsWith(_byteOrderMark)
+        ? _byteOrderMark
+        : '';
+    final rest = newBody == null
+        ? source.substring(mark.length)
+        : layout.withLineEndings(newBody);
     final eol = layout.eol;
     final text =
-        '---$eol${layout.withLineEndings(emitter.emit(target))}$eol'
+        '$mark---$eol${layout.withLineEndings(emitter.emit(target))}$eol'
         '---$eol$eol$rest';
-    if (_readsBack(text, target, expectedBody)) {
+    if (_readsBack(text, target, expectedBody.substring(mark.length))) {
       return text;
     }
     throw _unwritable(frontmatter);
@@ -92,6 +106,8 @@ String rewriteOkfDocumentSource(
   throw _unwritable(frontmatter);
 }
 
+const String _byteOrderMark = '\uFEFF';
+
 OkfYamlEncodeException _unwritable(Map<String, Object?> frontmatter) =>
     OkfYamlEncodeException(
       'The frontmatter cannot be written so that it reads back as the '
@@ -99,11 +115,25 @@ OkfYamlEncodeException _unwritable(Map<String, Object?> frontmatter) =>
       frontmatter,
     );
 
-/// Whether [text] parses to [frontmatter] and [body].
-bool _readsBack(String text, Map<String, Object?> frontmatter, String body) {
+/// The text of a document without frontmatter did not read back: its first
+/// line reads as the `---` that opens a frontmatter block.
+OkfYamlEncodeException _unwritableBody(String text) => OkfYamlEncodeException(
+  'A body whose first line is a --- delimiter cannot be written without a '
+  'frontmatter block, because it would read back as one.',
+  text,
+);
+
+/// Whether [text] parses to [frontmatter] and [body], with a frontmatter
+/// block exactly when [hasFrontmatter] is true.
+bool _readsBack(
+  String text,
+  Map<String, Object?> frontmatter,
+  String body, {
+  bool hasFrontmatter = true,
+}) {
   try {
     final document = OkfDocument.parse(text);
-    return document.hasFrontmatter &&
+    return document.hasFrontmatter == hasFrontmatter &&
         document.body == body &&
         _sameYaml(document.frontmatter, frontmatter);
   } on FormatException {
