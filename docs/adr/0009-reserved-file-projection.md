@@ -34,8 +34,12 @@ same tool error, because the writer would commit other bytes than the ones
 judged.
 
 Concepts stay out of reach: the overlay remains their only writer, so the
-lossless round trip and the log entries that describe concept changes keep
-one owner.
+lossless round trip keeps one owner. Only concept files keep one writer. A
+projection may replace a `log.md` wholesale, rewording or dropping the entry
+okf recorded for a concept change, or leave the change with no entry at all.
+The Spec requires no log entry: a `log.md` MAY appear at any level (§9). okf
+does not enforce its own entries; the closed validator judges a projected log
+by its §9 structure alone.
 
 `okf_io.dart` exports `OkfBundleLock`, so a caller can hold `write` around
 `prepare` and `commit` and keep the source from changing between them. The
@@ -55,6 +59,9 @@ release, which bumps the revision; patch releases never change it.
 
 - Downstream index and log conventions commit atomically with the change that
   needs them, under the bundle lock, and never bypass validation.
+- The log entries okf records for concept changes are the change set's
+  default, not a guarantee: a caller that projects `log.md` decides what the
+  log says about its change.
 - A projection is caller code running inside preparation. It must not write
   the bundle, and preparation is unlocked unless the caller holds
   `OkfBundleLock.write`, which `okf_io.dart` now exports.
