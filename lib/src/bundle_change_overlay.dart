@@ -11,6 +11,7 @@ import 'index_generator.dart';
 import 'index_log.dart';
 import 'iso_date.dart';
 import 'link_path.dart';
+import 'utf8_text.dart';
 import 'yaml_emitter.dart';
 
 /// The bundle state and file texts an [OkfBundleChangeSet] would produce.
@@ -272,13 +273,16 @@ String _indexValue(Object? value, {String? fallback}) =>
 /// the edited document, or `null` when its text would not change.
 ///
 /// The text is edited in place, so every byte the change does not touch is
-/// kept; see [OkfDocumentSourceRewrite.rewriteSource].
+/// kept; see [OkfDocumentSourceRewrite.rewriteSource]. Inputs that hold an
+/// unpaired surrogate are refused first, so the tool error names the field
+/// rather than whichever step of the rewrite would fail on it.
 OkfDocument? _edited(
   OkfConceptId id,
   OkfDocument document,
   Map<String, Object?> changes, {
   String? body,
 }) {
+  _requireUtf8Input(id, changes, body);
   final frontmatter = LinkedHashMap<String, Object?>.of(document.frontmatter);
   for (final field in changes.entries) {
     if (field.value == null) {
@@ -293,6 +297,50 @@ OkfDocument? _edited(
   }
   return OkfDocument.parse(text, sourcePath: id.documentPath);
 }
+
+/// Throws unless UTF-8 can encode every string in [changes] and [body].
+///
+/// `utf8.encode` replaces an unpaired surrogate with U+FFFD, and YAML text
+/// cannot hold one, so such a value could never be written as requested.
+void _requireUtf8Input(
+  OkfConceptId id,
+  Map<String, Object?> changes,
+  String? body,
+) {
+  String? field;
+  for (final MapEntry(:key, :value) in changes.entries) {
+    if (hasUnpairedSurrogate(key)) {
+      field = 'A frontmatter key';
+    } else if (_holdsUnpairedSurrogate(value)) {
+      field = 'Frontmatter field $key';
+    }
+    if (field != null) {
+      break;
+    }
+  }
+  if (field == null && body != null && hasUnpairedSurrogate(body)) {
+    field = 'The body';
+  }
+  if (field != null) {
+    throw OkfBundleChangeException(
+      'Concept ${id.value} cannot be written. $field holds an unpaired '
+      'surrogate, which UTF-8 cannot encode.',
+    );
+  }
+}
+
+/// Whether [value], or any key or value nested in it, is a string that holds
+/// an unpaired surrogate.
+bool _holdsUnpairedSurrogate(Object? value) => switch (value) {
+  String() => hasUnpairedSurrogate(value),
+  Map() => value.entries.any(
+    (entry) =>
+        _holdsUnpairedSurrogate(entry.key) ||
+        _holdsUnpairedSurrogate(entry.value),
+  ),
+  Iterable() => value.any(_holdsUnpairedSurrogate),
+  _ => false,
+};
 
 /// Emits the root log with [entries] prepended, or `null` when the existing
 /// log cannot be re-emitted without losing content.

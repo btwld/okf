@@ -636,6 +636,110 @@ title: Note
     expect(await _snapshot(root), before);
   });
 
+  test('an edit input with an unpaired surrogate is named first', () async {
+    await _write(root, 'metrics/revenue.md', '''
+---
+type: Metric
+title: Revenue
+description: |
+  Line one.
+  Line two.
+generated: {by: agent:okf, at: "2026-08-01T00:00:00Z"}
+tags:
+  - finance
+---
+
+# Revenue
+''');
+    final before = await _snapshot(root);
+    final revenue = OkfConceptId('metrics/revenue');
+
+    // Each value would take a different path through the rewriter: a span
+    // replacement, a literal block, a flow mapping, a block list, a new key,
+    // the body and a sources item. The check runs before any of them, so the
+    // error names the input instead of a step that fails on it.
+    for (final (field, change) in <(String, OkfBundleChange)>[
+      (
+        'Frontmatter field title',
+        OkfUpdateConceptChange(
+          id: revenue,
+          frontmatterChanges: <String, Object?>{'title': 'Revenue \uD800'},
+        ),
+      ),
+      (
+        'Frontmatter field description',
+        OkfUpdateConceptChange(
+          id: revenue,
+          frontmatterChanges: <String, Object?>{
+            'description': 'Line one.\n\uDC00 two.\n',
+          },
+        ),
+      ),
+      (
+        'Frontmatter field generated',
+        OkfUpdateConceptChange(
+          id: revenue,
+          frontmatterChanges: <String, Object?>{
+            'generated': <String, Object?>{
+              'by': 'agent:\uD800',
+              'at': '2026-08-01T00:00:00Z',
+            },
+          },
+        ),
+      ),
+      (
+        'Frontmatter field tags',
+        OkfUpdateConceptChange(
+          id: revenue,
+          frontmatterChanges: <String, Object?>{
+            'tags': <Object?>['finance', '\uDC00'],
+          },
+        ),
+      ),
+      (
+        'A frontmatter key',
+        OkfUpdateConceptChange(
+          id: revenue,
+          frontmatterChanges: <String, Object?>{'owner \uD800': 'finance'},
+        ),
+      ),
+      (
+        'The body',
+        OkfUpdateConceptChange(id: revenue, body: '# Revenue \uD800\n'),
+      ),
+      (
+        'Frontmatter field sources',
+        OkfLinkConceptsChange(
+          source: revenue,
+          target: OkfConceptId('metrics/margin'),
+          relationship: 'feeds \uDC00',
+        ),
+      ),
+    ]) {
+      for (final run in <Future<Object?> Function()>[
+        () => changes.prepare(root.path, OkfBundleChangeSet([change])),
+        () => changes.apply(root.path, OkfBundleChangeSet([change])),
+      ]) {
+        await expectLater(
+          run(),
+          throwsA(
+            isA<OkfBundleChangeException>().having(
+              (error) => error.message,
+              'message',
+              allOf(
+                startsWith('Concept metrics/revenue cannot be written.'),
+                contains('$field holds an unpaired surrogate'),
+                isNot(contains('reads back')),
+              ),
+            ),
+          ),
+          reason: field,
+        );
+      }
+    }
+    expect(await _snapshot(root), before);
+  });
+
   group('concept edits keep the bytes they do not change', () {
     const styled = '''
 ---

@@ -25,8 +25,10 @@
   now also when it only reorders a nested mapping's keys. An edit that cannot
   be written so that it reads back, such as a body-only concept's new body
   whose first line is `---`, throws `OkfBundleChangeException` from
-  `prepare`. New concepts, `serialize` and `okf format` keep the canonical
-  form. See ADR-0010.
+  `prepare`, and so does an edit whose input holds an unpaired surrogate,
+  naming the field or body that holds it before any rewrite is tried. New
+  concepts, `serialize` and `okf format` keep the canonical form. See
+  ADR-0010.
 - Keep the UTF-8 byte order mark of every file a commit rewrites. A concept,
   `index.md` or `log.md` file that began with one keeps it, whether the
   change set or a reserved-file projection wrote its new text. The texts a
