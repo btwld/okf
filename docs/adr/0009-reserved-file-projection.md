@@ -27,7 +27,11 @@ replace the change set's in the candidate, the closed validator judges the
 result exactly as it judges the change set alone, so Spec-invalid output is a
 refusal, and the commit plan binds those bytes to the same source snapshot, so
 a stale source is still refused at commit. An empty change set with a
-projection is a reserved-file repair.
+projection is a reserved-file repair. A refusal carries its candidate, so a
+caller can show what it refused. Every text the change set or the projection
+produces must survive UTF-8 encoding; one with an unpaired surrogate is the
+same tool error, because the writer would commit other bytes than the ones
+judged.
 
 Concepts stay out of reach: the overlay remains their only writer, so the
 lossless round trip and the log entries that describe concept changes keep

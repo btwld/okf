@@ -7,7 +7,14 @@
   validated with the rest of the candidate, so Spec-invalid output is refused,
   and the commit writes exactly those bytes or refuses a stale source. Naming
   any other path throws `OkfBundleChangeException`. An empty change set with a
-  projection repairs reserved files on their own. See ADR-0009.
+  projection repairs reserved files on their own. `apply` takes the same
+  `project` argument. See ADR-0009.
+- Add `OkfPreparationRefused.candidate`, the refused candidate after any
+  projection, so a caller can show what a refused change would have written.
+- Throw `OkfBundleChangeException` from `prepare` for a text that holds an
+  unpaired surrogate, whether a change set or a projection produced it.
+  Previously the writer replaced the surrogate with U+FFFD, so the committed
+  bytes differed from the text the validator judged.
 - Add `OkfPreparedCandidate.toLoadResult()`, which reads a candidate as a
   later load of the committed bundle would, retaining load findings for
   source files the candidate does not replace.

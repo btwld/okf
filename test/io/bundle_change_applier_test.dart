@@ -77,6 +77,7 @@ void main() {
       refusal.validation.report.findings.map((finding) => finding.id.value),
       contains('okf/missing-type'),
     );
+    expect(refusal.candidate?.concepts, contains('metrics/untyped.md'));
     expect(await _snapshot(root), before);
   });
 
@@ -507,6 +508,33 @@ title: Note
     },
   );
 
+  test('a change set text UTF-8 cannot encode is a tool error', () async {
+    final before = await _snapshot(root);
+
+    await expectLater(
+      changes.prepare(
+        root.path,
+        OkfBundleChangeSet(<OkfBundleChange>[
+          OkfCreateConceptChange(
+            id: OkfConceptId('metrics/churn'),
+            document: OkfDocument(
+              frontmatter: <String, Object?>{'type': 'Metric'},
+              body: '# Churn \uDC00\n',
+            ),
+          ),
+        ]),
+      ),
+      throwsA(
+        isA<OkfBundleChangeException>().having(
+          (error) => error.message,
+          'message',
+          contains('metrics/churn.md'),
+        ),
+      ),
+    );
+    expect(await _snapshot(root), before);
+  });
+
   group('reserved-file projection', () {
     const projectedIndex =
         '# Metric\n'
@@ -625,6 +653,33 @@ title: Note
       expect(await _snapshot(root), before);
     });
 
+    test('a projected text UTF-8 cannot encode is a tool error', () async {
+      final before = await _snapshot(root);
+
+      // The writer would encode the unpaired surrogate as U+FFFD, so the
+      // committed bytes would not be the text the validator judged.
+      await expectLater(
+        changes.prepare(
+          root.path,
+          _createChurn(),
+          project: (_) => <String, String?>{
+            'metrics/index.md': projectedIndex.replaceFirst(
+              'Projected churn',
+              'Projected \uD800 churn',
+            ),
+          },
+        ),
+        throwsA(
+          isA<OkfBundleChangeException>().having(
+            (error) => error.message,
+            'message',
+            contains('metrics/index.md'),
+          ),
+        ),
+      );
+      expect(await _snapshot(root), before);
+    });
+
     test('Spec-invalid projected output is refused', () async {
       final before = await _snapshot(root);
       final result = await changes.prepare(
@@ -637,8 +692,9 @@ title: Note
       );
 
       expect(result, isA<OkfPreparationRefused>());
+      final refusal = result as OkfPreparationRefused;
       expect(
-        (result as OkfPreparationRefused).validation.report.findings.map(
+        refusal.validation.report.findings.map(
           (finding) => (finding.id.value, finding.location?.path),
         ),
         containsAll(<(String, String)>[
@@ -646,7 +702,40 @@ title: Note
           ('okf/invalid-log-frontmatter', 'log.md'),
         ]),
       );
+
+      // The refused candidate is the projected one, so a caller can show it.
+      final candidate = refusal.candidate!;
+      expect(candidate.indexes['metrics/index.md'], 'Not an index.\n');
+      expect(candidate.concepts, contains('metrics/churn.md'));
+      expect(
+        candidate.toLoadResult().validate().report.toJson(),
+        refusal.validation.report.toJson(),
+      );
       expect(await _snapshot(root), before);
+    });
+
+    test('apply commits or refuses a projected candidate', () async {
+      final refused = await changes.apply(
+        root.path,
+        _createChurn(),
+        project: (_) => const <String, String?>{
+          'metrics/index.md': 'Not an index.\n',
+        },
+      );
+      expect(refused, isA<OkfBundleApplicationRefused>());
+
+      final applied = await changes.apply(
+        root.path,
+        _createChurn(),
+        project: (_) => const <String, String?>{
+          'metrics/index.md': projectedIndex,
+        },
+      );
+      expect(applied, isA<OkfBundleApplied>());
+      expect(
+        await _readBytes(root, 'metrics/index.md'),
+        utf8.encode(projectedIndex),
+      );
     });
 
     test('a source change after projection is refused at commit', () async {
