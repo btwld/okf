@@ -1235,11 +1235,10 @@ owner: finance-team
           containsAll(<String>['metrics/index.md', 'log.md', 'index.md']),
         );
 
-        expect(
-          await _readBytes(root, 'metrics/index.md'),
-          <int>[...mark, ...utf8.encode(index)],
-          reason: 'projected: $projected',
-        );
+        expect(await _readBytes(root, 'metrics/index.md'), <int>[
+          ...mark,
+          ...utf8.encode(index),
+        ], reason: 'projected: $projected');
         expect(await _readBytes(root, 'log.md'), <int>[
           ...mark,
           ...utf8.encode(log),
