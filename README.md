@@ -233,7 +233,15 @@ verified: {by: "human:reviewer", at: "2026-07-27T12:00:00Z"}
 ''');
 
 print(document.metadata.trustTier.wireValue); // human-reviewed
+print(document.bodyStartLine); // 7
 ```
+
+`bodyStartLine` is the 1-based line of the parsed text on which `body`
+begins, so a host can cite body text by file line: line `n` of `body` is line
+`bodyStartLine + n - 1` of the source. It counts LF, CRLF and a lone CR as one
+line break each, as parsing does, and a byte order mark as none. Without
+frontmatter it is 1, and it is `null` for a document built with the
+constructor or `copyWith`.
 
 Filesystem operations live in the separate `okf_io.dart` library:
 

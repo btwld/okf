@@ -109,6 +109,29 @@ void main() {
       },
     );
 
+    test('records where each loaded concept body starts in its file', () async {
+      final root = await Directory(p.join(sandbox.path, 'bundle')).create();
+      await _write(root, 'plain.md', '---\ntype: Note\n---\n\n# Plain\n');
+      const windowsText = '---\r\ntype: Note\r\n\r\n---\r\n\r\n# Windows\r\n';
+      await File(p.join(root.path, 'windows.md')).writeAsBytes(<int>[
+        0xef,
+        0xbb,
+        0xbf,
+        ...utf8.encode(windowsText),
+      ], flush: true);
+
+      final bundle = await const OkfBundleLoader().load(root.path);
+      final windows = bundle.conceptAtPath('windows.md')!;
+
+      expect(bundle.conceptAtPath('plain.md')!.bodyStartLine, 5);
+      expect(windows.body, '# Windows\n');
+      expect(windows.bodyStartLine, 6);
+      expect(
+        windowsText.split('\r\n')[windows.bodyStartLine! - 1],
+        '# Windows',
+      );
+    });
+
     test('validate merges load findings with fixed Spec findings', () async {
       final root = await Directory(p.join(sandbox.path, 'bundle')).create();
       await _write(root, 'valid.md', '---\ntype: Reference\n---\n\nValid\n');

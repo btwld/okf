@@ -241,6 +241,125 @@ Body.
     });
   });
 
+  group('OkfDocument.bodyStartLine', () {
+    test('is line 1 without frontmatter', () {
+      const source = '# Title\n\nText\n';
+
+      final document = OkfDocument.parse(source);
+
+      expect(document.hasFrontmatter, isFalse);
+      expect(document.bodyStartLine, 1);
+      _expectBodyLinesMatchSource(source, document);
+      expect(OkfDocument.parse('').bodyStartLine, 1);
+    });
+
+    test('is the line after the separator blank line', () {
+      const source = '---\ntype: Note\n---\n\n# Title\n\nText\n';
+
+      final document = OkfDocument.parse(source);
+
+      expect(document.body, '# Title\n\nText\n');
+      expect(document.bodyStartLine, 5);
+      _expectBodyLinesMatchSource(source, document);
+      expect(
+        OkfDocument.parse('---\ntype: Note\n---\n# Title\n').bodyStartLine,
+        4,
+      );
+    });
+
+    test('puts an empty body one line past the last line', () {
+      for (final MapEntry(key: source, value: line) in const <String, int>{
+        '---\ntype: Note\n---': 4,
+        '---\ntype: Note\n---\n': 4,
+        '---\ntype: Note\n---\n\n': 5,
+        '---\n---\n': 3,
+      }.entries) {
+        final document = OkfDocument.parse(source);
+
+        expect(document.body, isEmpty, reason: source);
+        expect(document.bodyStartLine, line, reason: source);
+        expect(document.bodyStartLine, _lineCount(source) + 1, reason: source);
+      }
+    });
+
+    test('counts CRLF and lone CR line endings as one line each', () {
+      for (final source in const <String>[
+        '---\r\ntype: Note\r\n---\r\n\r\n# Title\r\n\r\nText\r\n',
+        '---\rtype: Note\r---\r\r# Title\r\rText\r',
+        '---\r\ntype: Note\n---\r\r\n# Title\n\rText\r\n',
+      ]) {
+        final document = OkfDocument.parse(source);
+
+        expect(document.body, '# Title\n\nText\n', reason: source);
+        expect(document.bodyStartLine, 5, reason: source);
+        _expectBodyLinesMatchSource(source, document);
+      }
+    });
+
+    test('adds no line for a byte order mark', () {
+      const source = '﻿---\ntype: Note\n---\n\n# Title\n';
+
+      final document = OkfDocument.parse(source);
+
+      expect(document.type, 'Note');
+      expect(document.bodyStartLine, 5);
+      _expectBodyLinesMatchSource(source, document);
+
+      const bodyOnly = '﻿# Title\r\nText\r\n';
+      final plain = OkfDocument.parse(bodyOnly);
+      expect(plain.hasFrontmatter, isFalse);
+      expect(plain.bodyStartLine, 1);
+      _expectBodyLinesMatchSource(bodyOnly, plain);
+    });
+
+    test('counts blank lines around the frontmatter', () {
+      const inside = '---\ntype: Note\n\n\n---\n\n# Title\n';
+      const after = '---\ntype: Note\n---\n\n\n\n# Title\n';
+      const whitespaceSeparator = '---\ntype: Note\n---\n  \n# Title\n';
+
+      final insideDocument = OkfDocument.parse(inside);
+      final afterDocument = OkfDocument.parse(after);
+      final whitespaceDocument = OkfDocument.parse(whitespaceSeparator);
+
+      expect(insideDocument.body, '# Title\n');
+      expect(insideDocument.bodyStartLine, 7);
+      _expectBodyLinesMatchSource(inside, insideDocument);
+      // Only one separator line is dropped; the rest belong to the body.
+      expect(afterDocument.body, '\n\n# Title\n');
+      expect(afterDocument.bodyStartLine, 5);
+      _expectBodyLinesMatchSource(after, afterDocument);
+      // A whitespace-only line is body text, not the separator.
+      expect(whitespaceDocument.body, '  \n# Title\n');
+      expect(whitespaceDocument.bodyStartLine, 4);
+      _expectBodyLinesMatchSource(whitespaceSeparator, whitespaceDocument);
+    });
+
+    test('does not confuse a body that repeats the frontmatter', () {
+      const source =
+          '---\ntype: Note\ntitle: Same\n---\n\n'
+          'title: Same\n---\ntype: Note\ntitle: Same\n---\n';
+
+      final document = OkfDocument.parse(source);
+
+      expect(document.title, 'Same');
+      expect(document.body, 'title: Same\n---\ntype: Note\ntitle: Same\n---\n');
+      // A search for the body's first line finds the frontmatter's line 3.
+      final firstBodyLine = document.body.split('\n').first;
+      expect(_sourceLines(source).indexOf(firstBodyLine) + 1, 3);
+      expect(document.bodyStartLine, 6);
+      _expectBodyLinesMatchSource(source, document);
+    });
+
+    test('is null for documents built in memory', () {
+      final parsed = OkfDocument.parse('---\ntype: Note\n---\n\nBody\n');
+
+      expect(OkfDocument(body: 'Body\n').bodyStartLine, isNull);
+      expect(parsed.copyWith().bodyStartLine, isNull);
+      expect(parsed.copyWith(body: 'Other\n').bodyStartLine, isNull);
+      expect(OkfDocument.parse(parsed.serialize()).bodyStartLine, 5);
+    });
+  });
+
   group('legacy citations', () {
     test('citation JSON preserves the original Markdown spelling', () {
       const raw = '[7] [Policy](../references/policy.md)';
@@ -338,4 +457,35 @@ cycle: &cycle [*cycle]
       ),
     );
   });
+}
+
+/// Splits [source] where [OkfDocument.parse] ends a line: LF, CRLF or a lone
+/// CR. A final line break leaves an empty last element.
+List<String> _sourceLines(String source) => source.split(RegExp('\r\n|\r|\n'));
+
+/// The lines of [source], where a final line break ends the last line rather
+/// than starting another.
+int _lineCount(String source) {
+  if (source.isEmpty) {
+    return 0;
+  }
+  final lines = _sourceLines(source);
+  return lines.last.isEmpty ? lines.length - 1 : lines.length;
+}
+
+/// Expects line `n` of [document]'s body to be line `bodyStartLine + n - 1`
+/// of [source], through to the source's end.
+void _expectBodyLinesMatchSource(String source, OkfDocument document) {
+  final sourceLines = _sourceLines(source);
+  final bodyLines = document.body.split('\n');
+  final start = document.bodyStartLine!;
+
+  expect(start + bodyLines.length - 1, sourceLines.length, reason: source);
+  for (var line = 1; line <= bodyLines.length; line++) {
+    expect(
+      sourceLines[start + line - 2],
+      bodyLines[line - 1],
+      reason: 'body line $line of $source',
+    );
+  }
 }
