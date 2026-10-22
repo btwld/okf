@@ -1,7 +1,9 @@
+/// @docImport 'document.dart';
+library;
+
 import 'dart:collection';
 import 'dart:convert';
 
-import 'document.dart' show OkfDocument;
 import 'utf8_text.dart';
 import 'yaml_data.dart';
 
@@ -336,28 +338,6 @@ final class OkfYamlEmitter {
       '.inf',
     }.contains(lowered);
   }
-}
-
-/// The lines [emitter] writes for the non-empty collection [value] when it
-/// is nested at [indentation], as [OkfYamlEmitter.emit] writes a collection
-/// value under its key.
-///
-/// For the frontmatter rewriter only; `okf.dart` does not export it.
-List<String> emitOkfYamlBlockLines(
-  OkfYamlEmitter emitter,
-  Object? value, {
-  required int indentation,
-}) {
-  final output = StringBuffer();
-  emitter._writeNode(
-    output,
-    value,
-    indentation: indentation,
-    state: _YamlEmissionState(),
-  );
-  final text = output.toString();
-  return (text.endsWith('\n') ? text.substring(0, text.length - 1) : text)
-      .split('\n');
 }
 
 final class _YamlEmissionState {

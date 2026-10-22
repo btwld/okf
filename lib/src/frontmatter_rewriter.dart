@@ -715,8 +715,24 @@ final class _InPlaceEdit {
     ];
   }
 
-  List<String> _blockLines(Object? value, int indentation) =>
-      emitOkfYamlBlockLines(emitter, value, indentation: indentation);
+  /// The lines [OkfYamlEmitter.emit] writes for the non-empty collection
+  /// [value] when it is nested at [indentation].
+  ///
+  /// `emit` writes a collection value on the lines after its key, two spaces
+  /// in, and starts every such line with at least that indentation, since it
+  /// writes each scalar on one line.
+  List<String> _blockLines(Object? value, int indentation) {
+    final lines = emitter
+        .emit(<String, Object?>{'value': value})
+        .split('\n')
+        .skip(1);
+    return <String>[
+      for (final line in lines)
+        indentation >= 2
+            ? '${' ' * (indentation - 2)}$line'
+            : line.substring(2 - indentation),
+    ];
+  }
 
   /// The one-line form of a scalar or an empty collection, or null.
   String? _inline(Object? value) {

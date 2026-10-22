@@ -12,4 +12,4 @@ export 'src/index_log.dart';
 export 'src/metadata.dart';
 export 'src/validator.dart';
 export 'src/version.dart';
-export 'src/yaml_emitter.dart' hide emitOkfYamlBlockLines;
+export 'src/yaml_emitter.dart';
