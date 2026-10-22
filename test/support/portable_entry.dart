@@ -17,6 +17,7 @@ void main() {
   if (!validation.isConformant ||
       indexes.isEmpty ||
       document.bodyStartLine != 5 ||
+      document.sourceText != '---\r\ntype: Metric\r\n---\r\n\r\nBody' ||
       okfVersion.isEmpty ||
       okfIndexGeneratorRevision.isEmpty) {
     throw StateError('The portable library did not run.');

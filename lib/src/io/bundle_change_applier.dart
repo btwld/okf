@@ -25,7 +25,8 @@ part 'bundle_change_case_folding.dart';
 /// [prepare] builds the complete candidate, validates it with the fixed OKF
 /// Spec validator, and returns an opaque capability. [commit] accepts only
 /// that capability, rechecks the source snapshot, and transactionally writes
-/// the exact bytes captured during preparation.
+/// the exact texts captured during preparation, each after the UTF-8 byte
+/// order mark [prepare] describes when the file takes one.
 final class OkfBundleChangeApplier {
   /// Creates a write path. [clock] only dates generated log entries.
   const OkfBundleChangeApplier({this.clock = DateTime.now});
@@ -33,7 +34,8 @@ final class OkfBundleChangeApplier {
   /// Supplies the date generated log entries are recorded under.
   final DateTime Function() clock;
 
-  /// Commits exactly the bytes bound into [prepared].
+  /// Commits exactly the bytes bound into [prepared]: each prepared text in
+  /// UTF-8, after a byte order mark when [prepare] says the file takes one.
   Future<OkfBundleCommitResult> commit(OkfPreparedChange prepared) =>
       OkfBundleLock.write(
         prepared._plan.rootPath,
@@ -81,10 +83,14 @@ final class OkfBundleChangeApplier {
     if (!plan.source.sameContent(current)) {
       throw const OkfStalePreparedChangeException();
     }
-    final written = await const OkfBundleWriteTransaction().writeAll(
-      plan.rootPath,
-      plan.changedFiles,
-    );
+    final written = await const OkfBundleWriteTransaction()
+        .writeAll(plan.rootPath, <String, String>{
+          for (final MapEntry(key: path, value: text)
+              in plan.changedFiles.entries)
+            path: plan.byteOrderMarkPaths.contains(path)
+                ? '$_byteOrderMark$text'
+                : text,
+        });
     return OkfBundleCommitResult(changedPaths: written.changedPaths);
   }
 
@@ -101,6 +107,14 @@ final class OkfBundleChangeApplier {
   /// projection produced it: writing it would commit other bytes than the
   /// ones validated. So does a change whose frontmatter holds such a string,
   /// which the YAML emitter cannot represent.
+  ///
+  /// Prepared texts are decoded text: loading drops one UTF-8 byte order
+  /// mark that begins a file, and a text holds what is left. So the commit
+  /// writes a mark before a text when the file began with one, keeping it
+  /// for a concept and an `index.md` or `log.md` alike, whether the change
+  /// set or [project] wrote the new text. It also writes one before a text
+  /// that itself begins with U+FEFF, which is then content after the mark.
+  /// Either way, the committed file loads as exactly the text validated.
   Future<OkfBundlePreparation> prepare(
     String rootPath,
     OkfBundleChangeSet changes, {
@@ -116,7 +130,11 @@ final class OkfBundleChangeApplier {
     );
     final sourceAfter = await _snapshot(
       loaded.rootPath,
-      retainedTextPaths: loaded.documents.keys.toSet(),
+      retainedTextPaths: <String>{
+        ...loaded.documents.keys,
+        ...loaded.indexes.keys,
+        ...loaded.logs.keys,
+      },
     );
     if (!sourceBefore.sameContent(sourceAfter)) {
       throw const OkfStalePreparedChangeException();
@@ -170,6 +188,12 @@ final class OkfBundleChangeApplier {
           rootPath: loaded.rootPath,
           source: sourceAfter.withoutText(),
           changedFiles: changedFiles,
+          byteOrderMarkPaths: <String>{
+            for (final MapEntry(key: path, value: text) in changedFiles.entries)
+              if (sourceAfter.startsWithByteOrderMark(path) ||
+                  text.startsWith(_byteOrderMark))
+                path,
+          },
         ),
       ),
     );
@@ -183,6 +207,13 @@ final class OkfBundleChangeApplier {
 /// `index.md` or `log.md` file. A text replaces whatever the change set
 /// prepared for that path; `null` keeps the source bundle's text, or its
 /// absence. Paths the result does not name keep the change set's text.
+///
+/// Texts are decoded text without the file's UTF-8 byte order mark, as
+/// [OkfProjectionInput.base] holds them. A reserved file that began with one
+/// keeps it when the commit writes the projected text, as a concept does, so
+/// a projection does not add one. A projected text that begins with U+FEFF
+/// holds it as content: the commit writes a mark before it, which loading
+/// drops, so the file loads as the projected text.
 ///
 /// The change set regenerates every ancestor index of a directory it adds,
 /// and the Spec validator does not check where index links lead. Returning
@@ -250,6 +281,8 @@ void _requireUtf8Text(String path, String text) {
     );
   }
 }
+
+const String _byteOrderMark = '\uFEFF';
 
 bool _isReservedFilePath(String path) {
   try {
@@ -341,9 +374,11 @@ Future<void> _validateCandidatePaths(
 
 /// An immutable view of the complete candidate prepared for a bundle write.
 ///
-/// Concept values are the exact serialized Markdown bytes represented by the
-/// candidate. [toBundle] and [toLoadResult] return detached in-memory copies
-/// for downstream inspection; changing a copy cannot change a prepared write.
+/// Concept values are the exact serialized Markdown text represented by the
+/// candidate, which a commit writes in UTF-8, after a byte order mark when
+/// [OkfBundleChangeApplier.prepare] says the file takes one. [toBundle] and
+/// [toLoadResult] return detached in-memory copies for downstream
+/// inspection; changing a copy cannot change a prepared write.
 final class OkfPreparedCandidate {
   factory OkfPreparedCandidate._fromSnapshot({
     required OkfBundleLoadResult loaded,
@@ -542,11 +577,19 @@ final class _PreparedCommitPlan {
     required this.rootPath,
     required this.source,
     required Map<String, String> changedFiles,
-  }) : changedFiles = Map<String, String>.unmodifiable(changedFiles);
+    required Set<String> byteOrderMarkPaths,
+  }) : changedFiles = Map<String, String>.unmodifiable(changedFiles),
+       byteOrderMarkPaths = Set<String>.unmodifiable(byteOrderMarkPaths);
 
   final String rootPath;
   final _BundleSnapshot source;
   final Map<String, String> changedFiles;
+
+  /// Changed files the commit writes after a UTF-8 byte order mark: those
+  /// whose source began with one, which decoding dropped from their text,
+  /// and those whose text begins with U+FEFF, which loading would otherwise
+  /// drop.
+  final Set<String> byteOrderMarkPaths;
 }
 
 bool _isConceptPath(String path) =>
@@ -626,6 +669,16 @@ final class _BundleSnapshot {
   String? text(String path) {
     final bytes = retainedText[path];
     return bytes == null ? null : utf8.decode(bytes, allowMalformed: false);
+  }
+
+  /// Whether the retained bytes of [path] begin with a UTF-8 byte order mark.
+  bool startsWithByteOrderMark(String path) {
+    final bytes = retainedText[path];
+    return bytes != null &&
+        bytes.length >= 3 &&
+        bytes[0] == 0xEF &&
+        bytes[1] == 0xBB &&
+        bytes[2] == 0xBF;
   }
 
   _BundleSnapshot withoutText() => _BundleSnapshot(

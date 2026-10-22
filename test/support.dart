@@ -94,3 +94,42 @@ final class CliResult {
   /// Every standard error line, joined by newlines.
   final String stderr;
 }
+
+/// Whether [left] and [right] are the same YAML data: mappings compare
+/// without regard to key order, an integer never equals a double, and NaN
+/// equals NaN.
+///
+/// Stricter than `equals`, which takes `1` for `1.0`, so tests use it where
+/// they check that written frontmatter reads back as the requested values.
+bool sameYamlData(Object? left, Object? right) {
+  if (left is Map && right is Map) {
+    if (left.length != right.length) {
+      return false;
+    }
+    for (final MapEntry(:key, :value) in left.entries) {
+      final matches = right.keys.where((other) => sameYamlData(key, other));
+      if (matches.length != 1 || !sameYamlData(value, right[matches.single])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (left is List && right is List) {
+    if (left.length != right.length) {
+      return false;
+    }
+    for (var index = 0; index < left.length; index++) {
+      if (!sameYamlData(left[index], right[index])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (left is double && right is double && left.isNaN && right.isNaN) {
+    return true;
+  }
+  if (left is num && right is num) {
+    return left == right && (left is int) == (right is int);
+  }
+  return left == right;
+}

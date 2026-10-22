@@ -95,7 +95,7 @@ final class OkfDocument {
   /// The top-level [frontmatter] map is copied so later structural mutations
   /// of the caller's map do not change this document. Nested semantic values
   /// are retained as supplied. The document has no source text, so its
-  /// [bodyStartLine] is null.
+  /// [sourceText] and [bodyStartLine] are null.
   OkfDocument({
     Map<String, Object?> frontmatter = const <String, Object?>{},
     String body = '',
@@ -110,6 +110,7 @@ final class OkfDocument {
     required Map<String, Object?> frontmatter,
     required this.body,
     required this.hasFrontmatter,
+    this.sourceText,
     this.bodyStartLine,
   }) : frontmatter = LinkedHashMap<String, Object?>.of(frontmatter);
 
@@ -120,8 +121,8 @@ final class OkfDocument {
   /// consumable but a concept validator can still report that frontmatter and
   /// `type` are required.
   ///
-  /// The parsed document records where its body begins in [source] as
-  /// [bodyStartLine].
+  /// The parsed document keeps [source] as [sourceText] and records where
+  /// its body begins in it as [bodyStartLine].
   factory OkfDocument.parse(String source, {String? sourcePath}) {
     final normalized = _normalizeLineEndings(source);
     final lines = normalized.split('\n');
@@ -130,6 +131,7 @@ final class OkfDocument {
         frontmatter: const <String, Object?>{},
         body: normalized,
         hasFrontmatter: false,
+        sourceText: source,
         bodyStartLine: 1,
       );
     }
@@ -212,6 +214,7 @@ final class OkfDocument {
       frontmatter: frontmatter,
       body: body,
       hasFrontmatter: true,
+      sourceText: source,
       bodyStartLine: bodyStartLine,
     );
   }
@@ -224,6 +227,15 @@ final class OkfDocument {
 
   /// Whether parsing found a frontmatter block.
   final bool hasFrontmatter;
+
+  /// The exact text this document was parsed from, or null for a document
+  /// built with the constructor or [copyWith].
+  ///
+  /// Update, link and deprecate changes edit this text in place rather than
+  /// write the document anew. Mutating [frontmatter] afterwards does not
+  /// change it. A parsed document holds this text besides its [body], so a
+  /// loaded bundle keeps each concept's text about twice.
+  final String? sourceText;
 
   /// The one-based line of the parsed source on which [body] begins, or null
   /// for a document that was not parsed from text.
@@ -278,7 +290,8 @@ final class OkfDocument {
 
   /// Returns a copy with selected document parts replaced.
   ///
-  /// The copy has no source text, so its [bodyStartLine] is null.
+  /// The copy has no source text, so its [sourceText] and [bodyStartLine]
+  /// are null.
   OkfDocument copyWith({
     Map<String, Object?>? frontmatter,
     String? body,

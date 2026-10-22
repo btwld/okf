@@ -5,6 +5,8 @@ import 'package:okf/okf_io.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
+import '../support.dart';
+
 void main() {
   late Directory root;
   late OkfBundleChangeApplier changes;
@@ -634,6 +636,483 @@ title: Note
     expect(await _snapshot(root), before);
   });
 
+  test('an edit input with an unpaired surrogate is named first', () async {
+    await _write(root, 'metrics/revenue.md', '''
+---
+type: Metric
+title: Revenue
+description: |
+  Line one.
+  Line two.
+generated: {by: agent:okf, at: "2026-08-01T00:00:00Z"}
+tags:
+  - finance
+---
+
+# Revenue
+''');
+    final before = await _snapshot(root);
+    final revenue = OkfConceptId('metrics/revenue');
+
+    // Each value would take a different path through the rewriter: a span
+    // replacement, a literal block, a flow mapping, a block list, a new key,
+    // the body and a sources item. A deprecation note goes only to the log.
+    // The check runs before any of them, so the error names the input
+    // instead of a step, or a file, that fails on it.
+    for (final (field, change) in <(String, OkfBundleChange)>[
+      (
+        'Frontmatter field title',
+        OkfUpdateConceptChange(
+          id: revenue,
+          frontmatterChanges: <String, Object?>{'title': 'Revenue \uD800'},
+        ),
+      ),
+      (
+        'Frontmatter field description',
+        OkfUpdateConceptChange(
+          id: revenue,
+          frontmatterChanges: <String, Object?>{
+            'description': 'Line one.\n\uDC00 two.\n',
+          },
+        ),
+      ),
+      (
+        'Frontmatter field generated',
+        OkfUpdateConceptChange(
+          id: revenue,
+          frontmatterChanges: <String, Object?>{
+            'generated': <String, Object?>{
+              'by': 'agent:\uD800',
+              'at': '2026-08-01T00:00:00Z',
+            },
+          },
+        ),
+      ),
+      (
+        'Frontmatter field tags',
+        OkfUpdateConceptChange(
+          id: revenue,
+          frontmatterChanges: <String, Object?>{
+            'tags': <Object?>['finance', '\uDC00'],
+          },
+        ),
+      ),
+      (
+        'A frontmatter key',
+        OkfUpdateConceptChange(
+          id: revenue,
+          frontmatterChanges: <String, Object?>{'owner \uD800': 'finance'},
+        ),
+      ),
+      (
+        'The body',
+        OkfUpdateConceptChange(id: revenue, body: '# Revenue \uD800\n'),
+      ),
+      (
+        'Frontmatter field sources',
+        OkfLinkConceptsChange(
+          source: revenue,
+          target: OkfConceptId('metrics/margin'),
+          relationship: 'feeds \uDC00',
+        ),
+      ),
+      (
+        'The deprecation note',
+        OkfDeprecateConceptChange(id: revenue, note: 'Replaced \uD800.'),
+      ),
+    ]) {
+      for (final run in <Future<Object?> Function()>[
+        () => changes.prepare(root.path, OkfBundleChangeSet([change])),
+        () => changes.apply(root.path, OkfBundleChangeSet([change])),
+      ]) {
+        await expectLater(
+          run(),
+          throwsA(
+            isA<OkfBundleChangeException>().having(
+              (error) => error.message,
+              'message',
+              allOf(
+                startsWith('Concept metrics/revenue cannot be written.'),
+                contains('$field holds an unpaired surrogate'),
+                isNot(contains('reads back')),
+                isNot(contains('log.md')),
+              ),
+            ),
+          ),
+          reason: field,
+        );
+      }
+    }
+    expect(await _snapshot(root), before);
+  });
+
+  group('concept edits keep the bytes they do not change', () {
+    const styled = '''
+---
+type: Metric
+title: 'Revenue'   # shown in indexes
+tags: [finance, monthly]
+generated: { by: agent:okf, at: 2026-08-01T00:00:00Z }
+# Kept by the finance team.
+owner: finance-team
+status: draft
+sources:
+  - resource: ledger.md
+    relationship: derived-from
+---
+
+# Revenue
+''';
+
+    Future<OkfBundleCommitResult> commit(OkfBundleChange change) async {
+      final preparation = await changes.prepare(
+        root.path,
+        OkfBundleChangeSet(<OkfBundleChange>[change]),
+      );
+      return changes.commit((preparation as OkfPreparationReady).prepared);
+    }
+
+    setUp(() => _write(root, 'metrics/revenue.md', styled));
+
+    test('an update edits only the keys it changes', () async {
+      await commit(
+        OkfUpdateConceptChange(
+          id: OkfConceptId('metrics/revenue'),
+          frontmatterChanges: const <String, Object?>{
+            'description': 'Recognized monthly revenue.',
+            'owner': null,
+            'generated': <String, Object?>{
+              'by': 'agent:okf',
+              'at': '2026-09-01T00:00:00Z',
+            },
+          },
+        ),
+      );
+
+      expect(await _read(root, 'metrics/revenue.md'), '''
+---
+type: Metric
+title: 'Revenue'   # shown in indexes
+tags: [finance, monthly]
+generated: { by: agent:okf, at: "2026-09-01T00:00:00Z" }
+# Kept by the finance team.
+status: draft
+sources:
+  - resource: ledger.md
+    relationship: derived-from
+description: Recognized monthly revenue.
+---
+
+# Revenue
+''');
+    });
+
+    test('an edit reads back as the requested values', () async {
+      final requested = <String, Object?>{
+        'title': '2026-08-18',
+        'tags': <Object?>['1', 1, 1.0, 'true'],
+        'generated': <String, Object?>{
+          'by': 'agent: okf',
+          'at': DateTime.utc(2026, 9, 1),
+        },
+        'description': 'Two lines.\nAnd a trailing break.\n',
+        'owner': null,
+      };
+      final expected = <String, Object?>{
+        ...OkfDocument.parse(styled).frontmatter,
+        ...requested,
+        'generated': <String, Object?>{
+          'by': 'agent: okf',
+          'at': '2026-09-01T00:00:00.000Z',
+        },
+      }..remove('owner');
+
+      final preparation = await changes.prepare(
+        root.path,
+        OkfBundleChangeSet(<OkfBundleChange>[
+          OkfUpdateConceptChange(
+            id: OkfConceptId('metrics/revenue'),
+            frontmatterChanges: requested,
+          ),
+        ]),
+      );
+      final prepared = (preparation as OkfPreparationReady).prepared;
+      final text = prepared.candidate.concepts['metrics/revenue.md']!;
+      expect(
+        sameYamlData(OkfDocument.parse(text).frontmatter, expected),
+        isTrue,
+        reason: text,
+      );
+
+      await changes.commit(prepared);
+      final loaded = await const OkfBundleLoader().inspect(root.path);
+      expect(
+        sameYamlData(
+          loaded.documents['metrics/revenue.md']!.frontmatter,
+          expected,
+        ),
+        isTrue,
+      );
+    });
+
+    test('a link appends to the sources list in place', () async {
+      await commit(
+        OkfLinkConceptsChange(
+          source: OkfConceptId('metrics/revenue'),
+          target: OkfConceptId('metrics/churn'),
+          relationship: 'depends-on',
+        ),
+      );
+
+      expect(
+        await _read(root, 'metrics/revenue.md'),
+        styled.replaceFirst(
+          '    relationship: derived-from\n',
+          '    relationship: derived-from\n'
+              '  - resource: churn.md\n'
+              '    relationship: depends-on\n',
+        ),
+      );
+    });
+
+    test('a deprecation replaces the status where it stands', () async {
+      await commit(
+        OkfDeprecateConceptChange(id: OkfConceptId('metrics/revenue')),
+      );
+
+      expect(
+        await _read(root, 'metrics/revenue.md'),
+        styled.replaceFirst('status: draft', 'status: deprecated'),
+      );
+    });
+
+    test('a deprecation adds a missing status after the last key', () async {
+      await _write(
+        root,
+        'metrics/revenue.md',
+        styled.replaceFirst('status: draft\n', ''),
+      );
+
+      await commit(
+        OkfDeprecateConceptChange(id: OkfConceptId('metrics/revenue')),
+      );
+
+      expect(
+        await _read(root, 'metrics/revenue.md'),
+        styled
+            .replaceFirst('status: draft\n', '')
+            .replaceFirst(
+              '    relationship: derived-from\n',
+              '    relationship: derived-from\nstatus: deprecated\n',
+            ),
+      );
+    });
+
+    test('an edit keeps a canonical bundle canonical', () async {
+      // `okf format` leaves this bundle alone, so no edit may make
+      // `okf format --check` fail on it: new keys go to their place in the
+      // preferred order, not after the last entry.
+      await _write(root, 'metrics/revenue.md', '''
+---
+type: Metric
+title: Revenue
+tags: []
+sources:
+  -
+    resource: ledger.md
+    relationship: derived-from
+owner: finance-team
+---
+
+# Revenue
+''');
+      expect(await _formatCheck(root), 0, reason: 'the seed is canonical');
+
+      final revenue = OkfConceptId('metrics/revenue');
+      for (final change in <OkfBundleChange>[
+        OkfDeprecateConceptChange(id: revenue),
+        OkfUpdateConceptChange(
+          id: revenue,
+          frontmatterChanges: const <String, Object?>{
+            'description': 'Monthly revenue.',
+            'tags': <Object?>['finance'],
+          },
+        ),
+        OkfLinkConceptsChange(
+          source: revenue,
+          target: OkfConceptId('metrics/margin'),
+          relationship: 'feeds',
+        ),
+      ]) {
+        await commit(change);
+        expect(
+          await _formatCheck(root),
+          0,
+          reason: '${change.runtimeType} keeps the bundle formatted',
+        );
+      }
+
+      expect(await _read(root, 'metrics/revenue.md'), '''
+---
+type: Metric
+title: Revenue
+description: Monthly revenue.
+tags:
+  - finance
+status: deprecated
+sources:
+  -
+    resource: ledger.md
+    relationship: derived-from
+  -
+    resource: margin.md
+    relationship: feeds
+owner: finance-team
+---
+
+# Revenue
+''');
+    });
+
+    test('an edit that cannot be written so is a tool error', () async {
+      await _write(root, 'notes/plain.md', '# Plain\n');
+      final before = await _snapshot(root);
+
+      await expectLater(
+        changes.prepare(
+          root.path,
+          OkfBundleChangeSet(<OkfBundleChange>[
+            OkfUpdateConceptChange(
+              id: OkfConceptId('notes/plain'),
+              body: '---\ntype: Injected\n---\n',
+            ),
+          ]),
+        ),
+        throwsA(
+          isA<OkfBundleChangeException>().having(
+            (error) => error.message,
+            'message',
+            allOf(contains('notes/plain'), contains('--- delimiter')),
+          ),
+        ),
+      );
+      expect(await _snapshot(root), before);
+    });
+
+    test('a body update keeps the frontmatter bytes', () async {
+      await commit(
+        OkfUpdateConceptChange(
+          id: OkfConceptId('metrics/revenue'),
+          frontmatterChanges: const <String, Object?>{'title': 'Revenue'},
+          body: '# Revenue\n\nRewritten.\n',
+        ),
+      );
+
+      expect(
+        await _read(root, 'metrics/revenue.md'),
+        '${styled.substring(0, styled.indexOf('# Revenue'))}'
+        '# Revenue\n\nRewritten.\n',
+      );
+    });
+
+    test('an update to values the concept holds writes nothing', () async {
+      final before = await _snapshot(root);
+      final result = await commit(
+        OkfUpdateConceptChange(
+          id: OkfConceptId('metrics/revenue'),
+          frontmatterChanges: <String, Object?>{
+            ...OkfDocument.parse(styled).frontmatter,
+            'generated': const <String, Object?>{
+              'at': '2026-08-01T00:00:00Z',
+              'by': 'agent:okf',
+            },
+          },
+          body: '# Revenue',
+        ),
+      );
+
+      expect(result.changedPaths, isEmpty);
+      expect(await _snapshot(root), before);
+    });
+
+    test('an update keeps CRLF line endings and a byte order mark', () async {
+      final file = File(p.join(root.path, 'metrics', 'revenue.md'));
+      await file.writeAsBytes(<int>[
+        0xEF,
+        0xBB,
+        0xBF,
+        ...utf8.encode(
+          '---\r\ntype: Metric\r\ntitle: Revenue\r\ntags: [finance]\r\n'
+          '---\r\n\r\n# Revenue\r\n',
+        ),
+      ]);
+
+      final preparation = await changes.prepare(
+        root.path,
+        OkfBundleChangeSet(<OkfBundleChange>[
+          OkfUpdateConceptChange(
+            id: OkfConceptId('metrics/revenue'),
+            frontmatterChanges: const <String, Object?>{
+              'tags': <Object?>['finance', 'monthly'],
+              'status': 'stable',
+            },
+          ),
+        ]),
+      );
+      final prepared = (preparation as OkfPreparationReady).prepared;
+      const edited =
+          '---\r\ntype: Metric\r\ntitle: Revenue\r\n'
+          'tags: [finance, monthly]\r\nstatus: stable\r\n'
+          '---\r\n\r\n# Revenue\r\n';
+      expect(prepared.candidate.concepts['metrics/revenue.md'], edited);
+      await changes.commit(prepared);
+
+      expect(await file.readAsBytes(), <int>[
+        0xEF,
+        0xBB,
+        0xBF,
+        ...utf8.encode(edited),
+      ]);
+    });
+
+    test(
+      'a concept that begins with two byte order marks keeps both',
+      () async {
+        const mark = <int>[0xEF, 0xBB, 0xBF];
+        final file = File(p.join(root.path, 'metrics', 'revenue.md'));
+        await file.writeAsBytes(<int>[
+          ...mark,
+          ...mark,
+          ...utf8.encode(
+            '---\ntype: Metric\ntitle: Revenue\n---\n\n# Revenue\n',
+          ),
+        ]);
+
+        // Loading drops the first mark, so the text the rewriter edits begins
+        // with the second, which stays content in front of the `---`.
+        final preparation = await changes.prepare(
+          root.path,
+          OkfBundleChangeSet(<OkfBundleChange>[
+            OkfDeprecateConceptChange(id: OkfConceptId('metrics/revenue')),
+          ]),
+        );
+        final prepared = (preparation as OkfPreparationReady).prepared;
+        const edited =
+            '\uFEFF---\ntype: Metric\ntitle: Revenue\nstatus: deprecated\n'
+            '---\n\n# Revenue\n';
+        expect(prepared.candidate.concepts['metrics/revenue.md'], edited);
+        await changes.commit(prepared);
+
+        expect(await file.readAsBytes(), <int>[
+          ...mark,
+          ...utf8.encode(edited),
+        ]);
+        final reloaded = await const OkfBundleLoader().inspect(root.path);
+        expect(reloaded.documents['metrics/revenue.md']!.sourceText, edited);
+      },
+    );
+  });
+
   group('reserved-file projection', () {
     const projectedIndex =
         '# Metric\n'
@@ -715,6 +1194,106 @@ title: Note
       expect(seen.date, DateTime.utc(2026, 8, 17));
       expect(seen.changedFiles['log.md'], contains('## 2026-08-17'));
     });
+
+    test('reserved files keep a byte order mark', () async {
+      const mark = <int>[0xEF, 0xBB, 0xBF];
+      // The change set's own index and log, and a projection's, are written
+      // back with the mark the file began with, as concepts are.
+      for (final projected in <bool>[false, true]) {
+        await _seedBundle(root);
+        for (final path in <String>['metrics/index.md', 'log.md']) {
+          final file = File(p.join(root.path, path));
+          await file.writeAsBytes(<int>[...mark, ...await file.readAsBytes()]);
+        }
+        final churn = File(p.join(root.path, 'metrics', 'churn.md'));
+        if (await churn.exists()) {
+          await churn.delete();
+        }
+
+        final preparation = await changes.prepare(
+          root.path,
+          _createChurn(),
+          project: projected
+              ? (_) => <String, String?>{
+                  'metrics/index.md': projectedIndex,
+                  'log.md': projectedLog,
+                }
+              : null,
+        );
+        final prepared = (preparation as OkfPreparationReady).prepared;
+        final index = prepared.candidate.indexes['metrics/index.md']!;
+        final log = prepared.candidate.logs['log.md']!;
+        expect(index.startsWith('\uFEFF'), isFalse);
+        expect(log.startsWith('\uFEFF'), isFalse);
+        if (projected) {
+          expect(index, projectedIndex);
+          expect(log, projectedLog);
+        }
+        final result = await changes.commit(prepared);
+        expect(
+          result.changedPaths,
+          containsAll(<String>['metrics/index.md', 'log.md', 'index.md']),
+        );
+
+        expect(await _readBytes(root, 'metrics/index.md'), <int>[
+          ...mark,
+          ...utf8.encode(index),
+        ], reason: 'projected: $projected');
+        expect(await _readBytes(root, 'log.md'), <int>[
+          ...mark,
+          ...utf8.encode(log),
+        ], reason: 'projected: $projected');
+        expect(
+          (await _readBytes(root, 'index.md')).take(3),
+          isNot(mark),
+          reason: 'a file without the mark does not gain one',
+        );
+        final reloaded = await const OkfBundleLoader().inspect(root.path);
+        expect(reloaded.indexes['metrics/index.md'], index);
+        expect(reloaded.logs['log.md'], log);
+      }
+    });
+
+    test(
+      'a projected text that begins with U+FEFF loads as that text',
+      () async {
+        const mark = <int>[0xEF, 0xBB, 0xBF];
+        const text = '\uFEFF$projectedIndex';
+        // Loading drops one mark, so the commit writes one before a text that
+        // begins with U+FEFF, as well as the mark the file began with: the
+        // file then loads as the text that was validated, with or without it.
+        for (final sourceMark in <bool>[false, true]) {
+          await _seedBundle(root);
+          final index = File(p.join(root.path, 'metrics', 'index.md'));
+          if (sourceMark) {
+            await index.writeAsBytes(<int>[
+              ...mark,
+              ...await index.readAsBytes(),
+            ]);
+          }
+
+          final preparation = await changes.prepare(
+            root.path,
+            OkfBundleChangeSet(const <OkfBundleChange>[]),
+            project: (_) => <String, String?>{'metrics/index.md': text},
+          );
+          final prepared = (preparation as OkfPreparationReady).prepared;
+          expect(prepared.candidate.indexes['metrics/index.md'], text);
+          await changes.commit(prepared);
+
+          expect(await index.readAsBytes(), <int>[
+            ...mark,
+            ...utf8.encode(text),
+          ], reason: 'source mark: $sourceMark');
+          final reloaded = await const OkfBundleLoader().inspect(root.path);
+          expect(
+            reloaded.indexes['metrics/index.md'],
+            text,
+            reason: 'source mark: $sourceMark',
+          );
+        }
+      },
+    );
 
     test('null keeps the source text or its absence', () async {
       final sourceLog = await _read(root, 'log.md');
@@ -1066,6 +1645,13 @@ okf_version: "0.2"
 * **Created**: [Revenue](metrics/revenue.md)
 ''');
 }
+
+/// The exit code of `okf format --check` on the bundle at [root].
+Future<int> _formatCheck(Directory root) async => (await runCli(<String>[
+  'format',
+  '--check',
+  root.path,
+], root.path)).exitCode;
 
 Future<String> _read(Directory root, String relativePath) => File(
   p.joinAll(<String>[root.path, ...p.posix.split(relativePath)]),

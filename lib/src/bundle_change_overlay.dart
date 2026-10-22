@@ -6,10 +6,12 @@ import 'bundle.dart';
 import 'bundle_change_set.dart';
 import 'concept_id.dart';
 import 'document.dart';
+import 'frontmatter_rewriter.dart';
 import 'index_generator.dart';
 import 'index_log.dart';
 import 'iso_date.dart';
 import 'link_path.dart';
+import 'utf8_text.dart';
 import 'yaml_emitter.dart';
 
 /// The bundle state and file texts an [OkfBundleChangeSet] would produce.
@@ -57,10 +59,8 @@ final class OkfBundleChangeOverlay {
       if (applied == null) {
         continue;
       }
-      final path = applied.id.documentPath;
-      final serialized = _emitting(change, applied.document.serialize);
-      documents[applied.id] = OkfDocument.parse(serialized, sourcePath: path);
-      files[path] = serialized;
+      documents[applied.id] = applied.document;
+      files[applied.id.documentPath] = applied.document.sourceText!;
       logEntries.add(applied.entry);
       if (applied.affectsIndex) {
         affectedIndexes.addAll(_indexAncestors(applied.id));
@@ -136,6 +136,11 @@ T _emitting<T>(OkfBundleChange change, T Function() emit) {
 
 /// Interprets one change against [documents], or returns `null` when the
 /// bundle already describes it.
+///
+/// The returned document is parsed from the text the change writes, which is
+/// its [OkfDocument.sourceText]. A new concept is written in canonical form;
+/// a change to an existing one edits its text in place through
+/// [OkfDocumentSourceRewrite.rewriteSource].
 ({OkfConceptId id, OkfDocument document, OkfLogEntry entry, bool affectsIndex})?
 _applyChange(
   Map<OkfConceptId, OkfDocument> documents,
@@ -150,7 +155,10 @@ _applyChange(
       }
       return (
         id: id,
-        document: document,
+        document: OkfDocument.parse(
+          document.serialize(),
+          sourcePath: id.documentPath,
+        ),
         entry: OkfLogEntry(
           date: day,
           action: 'Created',
@@ -161,12 +169,13 @@ _applyChange(
 
     case OkfUpdateConceptChange(id: final id):
       final current = _requireDocument(documents, id);
-      final updated = _withFrontmatter(
+      final updated = _edited(
+        id,
         current,
         change.frontmatterChanges,
         body: change.body,
       );
-      if (updated.serialize() == current.serialize()) {
+      if (updated == null) {
         return null;
       }
       return (
@@ -203,11 +212,15 @@ _applyChange(
         return null;
       }
 
+      final linked = _edited(source, current, <String, Object?>{
+        'sources': <Object?>[...declared, link],
+      });
+      if (linked == null) {
+        return null;
+      }
       return (
         id: source,
-        document: _withFrontmatter(current, <String, Object?>{
-          'sources': <Object?>[...declared, link],
-        }),
+        document: linked,
         entry: OkfLogEntry(
           date: day,
           action: 'Linked',
@@ -223,13 +236,18 @@ _applyChange(
       if (current.frontmatter['status'] == _deprecated) {
         return null;
       }
+      _requireUtf8Input(id, const <String, Object?>{}, note: note);
+      final deprecated = _edited(id, current, const <String, Object?>{
+        'status': _deprecated,
+      });
+      if (deprecated == null) {
+        return null;
+      }
       final link = _conceptLink(id, current);
       final trimmedNote = note?.trim() ?? '';
       return (
         id: id,
-        document: _withFrontmatter(current, const <String, Object?>{
-          'status': _deprecated,
-        }),
+        document: deprecated,
         entry: OkfLogEntry(
           date: day,
           action: 'Deprecated',
@@ -252,12 +270,20 @@ String _indexValue(Object? value, {String? fallback}) =>
     value is String && value.trim().isNotEmpty ? value.trim() : fallback ?? '';
 
 /// Overlays [changes] onto a document's frontmatter, dropping fields changed
-/// to `null` and retaining every field the change does not name.
-OkfDocument _withFrontmatter(
+/// to `null` and retaining every field the change does not name, and returns
+/// the edited document, or `null` when its text would not change.
+///
+/// The text is edited in place, so every byte the change does not touch is
+/// kept; see [OkfDocumentSourceRewrite.rewriteSource]. Inputs that hold an
+/// unpaired surrogate are refused first, so the tool error names the field
+/// rather than whichever step of the rewrite would fail on it.
+OkfDocument? _edited(
+  OkfConceptId id,
   OkfDocument document,
   Map<String, Object?> changes, {
   String? body,
 }) {
+  _requireUtf8Input(id, changes, body: body);
   final frontmatter = LinkedHashMap<String, Object?>.of(document.frontmatter);
   for (final field in changes.entries) {
     if (field.value == null) {
@@ -266,12 +292,63 @@ OkfDocument _withFrontmatter(
       frontmatter[field.key] = field.value;
     }
   }
-  return document.copyWith(
-    frontmatter: frontmatter,
-    body: body,
-    hasFrontmatter: document.hasFrontmatter || frontmatter.isNotEmpty,
-  );
+  final text = document.rewriteSource(frontmatter: frontmatter, body: body);
+  if (text == (document.sourceText ?? document.serialize())) {
+    return null;
+  }
+  return OkfDocument.parse(text, sourcePath: id.documentPath);
 }
+
+/// Throws unless UTF-8 can encode every string in [changes], [body] and
+/// [note], naming the input that holds an unpaired surrogate.
+///
+/// `utf8.encode` replaces an unpaired surrogate with U+FFFD, and YAML text
+/// cannot hold one, so such a value could never be written as requested. A
+/// deprecation [note] goes only to the log, where the same check on the
+/// prepared text would name `log.md` instead of the note.
+void _requireUtf8Input(
+  OkfConceptId id,
+  Map<String, Object?> changes, {
+  String? body,
+  String? note,
+}) {
+  String? field;
+  for (final MapEntry(:key, :value) in changes.entries) {
+    if (hasUnpairedSurrogate(key)) {
+      field = 'A frontmatter key';
+    } else if (_holdsUnpairedSurrogate(value)) {
+      field = 'Frontmatter field $key';
+    }
+    if (field != null) {
+      break;
+    }
+  }
+  if (field == null && body != null && hasUnpairedSurrogate(body)) {
+    field = 'The body';
+  }
+  if (field == null && note != null && hasUnpairedSurrogate(note)) {
+    field = 'The deprecation note';
+  }
+  if (field != null) {
+    throw OkfBundleChangeException(
+      'Concept ${id.value} cannot be written. $field holds an unpaired '
+      'surrogate, which UTF-8 cannot encode.',
+    );
+  }
+}
+
+/// Whether [value], or any key or value nested in it, is a string that holds
+/// an unpaired surrogate.
+bool _holdsUnpairedSurrogate(Object? value) => switch (value) {
+  String() => hasUnpairedSurrogate(value),
+  Map() => value.entries.any(
+    (entry) =>
+        _holdsUnpairedSurrogate(entry.key) ||
+        _holdsUnpairedSurrogate(entry.value),
+  ),
+  Iterable() => value.any(_holdsUnpairedSurrogate),
+  _ => false,
+};
 
 /// Emits the root log with [entries] prepended, or `null` when the existing
 /// log cannot be re-emitted without losing content.

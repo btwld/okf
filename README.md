@@ -94,7 +94,7 @@ Gate a repository on OKF Spec conformance with one step and no configuration:
 
 ```yaml
 steps:
-  - uses: btwld/okf@v0.5.1
+  - uses: btwld/okf@v0.6.0
 ```
 
 The action downloads the released `okf` archive for the ref in `uses`, unpacks
@@ -151,7 +151,9 @@ without the `.md` suffix; `type` is required when creating.
 `create-concept` and `update-concept` manage. An update overlays only the
 arguments it is given and retains every other field — `resource`,
 `verification`, `sources`, and anything else the document carries keep their
-values and their order.
+values, their order and their exact text, comments included. Only the lines
+of the fields the update changes are rewritten, as described under
+[Library](#library).
 
 `link-concepts` records `relationship` on the `source` concept as a reference
 to `target`, which `okf graph` exposes as a concept edge. The target may be
@@ -245,6 +247,9 @@ CR as one line break each, as parsing does, and a byte order mark as none.
 Without frontmatter it is 1, and it is `null` for a document built with the
 constructor or `copyWith`.
 
+`sourceText` is the exact text a document was parsed from, and `null` for a
+document built with the constructor or `copyWith`.
+
 Filesystem operations live in the separate `okf_io.dart` library:
 
 ```dart
@@ -265,7 +270,7 @@ print(
 Bundle mutations go through one prepared write path. Preparation builds the
 complete candidate and runs the closed OKF Spec validator without touching
 disk. Callers may inspect the immutable candidate before committing the exact
-prepared bytes across concept, index, and log files together:
+prepared texts across concept, index, and log files together:
 
 ```dart
 import 'package:okf/okf_io.dart';
@@ -297,6 +302,66 @@ switch (result) {
 }
 ```
 
+okf writes concepts under two policies:
+
+- **Canonical output** for `okf format`, `OkfDocument.serialize` and new
+  concepts (`OkfCreateConceptChange`, MCP `create-concept`): keys in the
+  preferred order, block style, okf's own quoting and LF line breaks, with
+  YAML comments dropped.
+- **In-place edits** for update, link and deprecate changes (MCP
+  `update-concept`, `link-concepts` and `deprecate-concept`): the concept's
+  text is edited rather than written anew, so a diff shows only the lines a
+  change touches.
+
+Deprecating this concept, for example, adds only the `status` line, after its
+last entry:
+
+```markdown
+---
+type: Metric
+title: 'Revenue'   # shown in indexes
+tags: [finance, monthly]
+status: deprecated
+---
+
+# Revenue
+```
+
+A key whose value is unchanged keeps its exact bytes: its position, flow or
+block style, quoting, comments and the blank lines around it. A changed
+one-line value is replaced where it stands, keeping a comment after it on its
+line. A changed flow collection is edited by span: changed values are replaced
+and new entries go after the last one, so its unchanged entries and spacing
+stay; when an entry is removed, the collection is rewritten whole on one line.
+A changed `|` or `>` block scalar stays a literal block when its new value has
+a line break and a literal block holds it as written. A changed block mapping
+is edited entry by entry, and items added to the end of a block sequence go
+after its last item, in that item's style, which is how a link appends its
+`sources` item. A removed key removes only its own lines, and a new key goes
+directly after the last entry of its mapping. New lines take the file's line
+break, so CRLF files stay CRLF, and a concept file that begins with a UTF-8
+byte order mark keeps it. An update that leaves a concept as it is writes
+nothing. New concepts are written in canonical form.
+
+Frontmatter already in canonical form, as `okf format` writes it, stays in
+canonical form: a new key goes to its place in the preferred key order, such
+as `status` before `sources`, and a filled `[]` is written as a block list.
+So an edit never makes `okf format --check` fail on a bundle that passed it.
+
+Every edit is parsed again and must read back as the requested mapping and
+body. When an in-place edit does not, or cannot be made, okf replaces the
+whole value of each changed top-level key, and failing that re-emits the whole
+mapping in canonical order, which moves keys such as `tags` and drops
+comments. An in-place edit cannot be made when it would remove the first key
+of a `- key: value` item, edit inside a block sequence that has a tag or
+anchor before its first `-`, or make two edits that overlap. The whole mapping
+is re-emitted straight away for a one-line `{...}` mapping, or one that uses
+YAML aliases, explicit `?` keys or collections as keys. A change that cannot
+be written so that it reads back, such as a body-only concept's new body whose
+first line is `---`, throws `OkfBundleChangeException` from `prepare`. Values
+a change writes take the spelling okf's emitter gives them; read the
+candidate's text to see what a change writes.
+
 A projection lets a caller rewrite the reserved `index.md` and `log.md` files
 of the same candidate, for example to apply its own index conventions or to
 record its own log entry. Projected texts are validated and committed with the
@@ -305,7 +370,11 @@ than an `index.md` or `log.md` throws `OkfBundleChangeException`. `apply`
 takes the same `project` argument, and the refusals of both `prepare` and
 `apply` carry the projected candidate. Dropping the `index.md` of a directory
 the change adds leaves its regenerated ancestors linking to it, so project
-those too. With no changes, a projection repairs reserved files on its own:
+those too. A reserved file that began with a UTF-8 byte order mark keeps it,
+as a concept does, so projected texts leave it out. A projected text that
+begins with U+FEFF holds it as content: the commit writes a mark before it,
+so the file loads back as the projected text. With no changes, a projection
+repairs reserved files on its own:
 
 ```dart
 final repair = await writer.prepare(
@@ -379,9 +448,11 @@ hard conformance errors from advisory findings:
 - Unicode concept IDs are accepted when safe; an advisory finding marks
   IDs that may be less portable across producers.
 
-Formatting is semantic rather than byte-preserving. It retains unknown data
-and Markdown content, but YAML comments, anchors, scalar quoting, and
-whitespace style are not retained.
+Canonical output is semantic rather than byte-preserving: `okf format` and
+new concepts retain unknown data and Markdown content, but not YAML comments,
+anchors, scalar quoting, or whitespace style. In-place edits of existing
+concepts preserve every byte they do not change, and keep a canonical concept
+canonical, so the two policies never pull a formatted bundle apart.
 
 Filesystem link checks assume a quiescent bundle rather than a directory tree
 being concurrently replaced by an adversarial process. Prepared multi-file

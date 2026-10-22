@@ -2,7 +2,7 @@
 /// it.
 ///
 /// This is not the OKF Spec version a root index declares in `okf_version`.
-const String okfVersion = '0.5.1';
+const String okfVersion = '0.6.0';
 
 /// The revision of the bytes `OkfIndexGenerator` emits.
 ///
