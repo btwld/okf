@@ -44,7 +44,9 @@ final class OkfBundleChangeApplier {
   /// Adapters that do not need the inspection seam can use this operation so
   /// concurrent callers never prepare from the same source state. Call
   /// [prepare] and [commit] separately when downstream policy must inspect the
-  /// immutable candidate between them. [project] is passed to [prepare].
+  /// immutable candidate between them. [project] is passed to [prepare], and
+  /// the projection callback runs while this operation holds the exclusive
+  /// lock.
   Future<OkfBundleApplication> apply(
     String rootPath,
     OkfBundleChangeSet changes, {
