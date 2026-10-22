@@ -656,8 +656,9 @@ tags:
 
     // Each value would take a different path through the rewriter: a span
     // replacement, a literal block, a flow mapping, a block list, a new key,
-    // the body and a sources item. The check runs before any of them, so the
-    // error names the input instead of a step that fails on it.
+    // the body and a sources item. A deprecation note goes only to the log.
+    // The check runs before any of them, so the error names the input
+    // instead of a step, or a file, that fails on it.
     for (final (field, change) in <(String, OkfBundleChange)>[
       (
         'Frontmatter field title',
@@ -715,6 +716,10 @@ tags:
           relationship: 'feeds \uDC00',
         ),
       ),
+      (
+        'The deprecation note',
+        OkfDeprecateConceptChange(id: revenue, note: 'Replaced \uD800.'),
+      ),
     ]) {
       for (final run in <Future<Object?> Function()>[
         () => changes.prepare(root.path, OkfBundleChangeSet([change])),
@@ -730,6 +735,7 @@ tags:
                 startsWith('Concept metrics/revenue cannot be written.'),
                 contains('$field holds an unpaired surrogate'),
                 isNot(contains('reads back')),
+                isNot(contains('log.md')),
               ),
             ),
           ),

@@ -236,6 +236,7 @@ _applyChange(
       if (current.frontmatter['status'] == _deprecated) {
         return null;
       }
+      _requireUtf8Input(id, const <String, Object?>{}, note: note);
       final deprecated = _edited(id, current, const <String, Object?>{
         'status': _deprecated,
       });
@@ -282,7 +283,7 @@ OkfDocument? _edited(
   Map<String, Object?> changes, {
   String? body,
 }) {
-  _requireUtf8Input(id, changes, body);
+  _requireUtf8Input(id, changes, body: body);
   final frontmatter = LinkedHashMap<String, Object?>.of(document.frontmatter);
   for (final field in changes.entries) {
     if (field.value == null) {
@@ -298,15 +299,19 @@ OkfDocument? _edited(
   return OkfDocument.parse(text, sourcePath: id.documentPath);
 }
 
-/// Throws unless UTF-8 can encode every string in [changes] and [body].
+/// Throws unless UTF-8 can encode every string in [changes], [body] and
+/// [note], naming the input that holds an unpaired surrogate.
 ///
 /// `utf8.encode` replaces an unpaired surrogate with U+FFFD, and YAML text
-/// cannot hold one, so such a value could never be written as requested.
+/// cannot hold one, so such a value could never be written as requested. A
+/// deprecation [note] goes only to the log, where the same check on the
+/// prepared text would name `log.md` instead of the note.
 void _requireUtf8Input(
   OkfConceptId id,
-  Map<String, Object?> changes,
+  Map<String, Object?> changes, {
   String? body,
-) {
+  String? note,
+}) {
   String? field;
   for (final MapEntry(:key, :value) in changes.entries) {
     if (hasUnpairedSurrogate(key)) {
@@ -320,6 +325,9 @@ void _requireUtf8Input(
   }
   if (field == null && body != null && hasUnpairedSurrogate(body)) {
     field = 'The body';
+  }
+  if (field == null && note != null && hasUnpairedSurrogate(note)) {
+    field = 'The deprecation note';
   }
   if (field != null) {
     throw OkfBundleChangeException(
