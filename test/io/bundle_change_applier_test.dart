@@ -726,6 +726,28 @@ description: Recognized monthly revenue.
       );
     });
 
+    test('a deprecation adds a missing status after the last key', () async {
+      await _write(
+        root,
+        'metrics/revenue.md',
+        styled.replaceFirst('status: draft\n', ''),
+      );
+
+      await commit(
+        OkfDeprecateConceptChange(id: OkfConceptId('metrics/revenue')),
+      );
+
+      expect(
+        await _read(root, 'metrics/revenue.md'),
+        styled
+            .replaceFirst('status: draft\n', '')
+            .replaceFirst(
+              '    relationship: derived-from\n',
+              '    relationship: derived-from\nstatus: deprecated\n',
+            ),
+      );
+    });
+
     test('an edit that cannot be written so is a tool error', () async {
       await _write(root, 'notes/plain.md', '# Plain\n');
       final before = await _snapshot(root);

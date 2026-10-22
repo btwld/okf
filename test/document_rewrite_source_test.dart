@@ -579,6 +579,40 @@ sources:
       );
     });
 
+    test('re-emits a changed top-level value whose nested edit does not '
+        'read back', () {
+      // Removing `owner` leaves the keeping block scalar's blank line as the
+      // YAML's last line, which adds nothing to it, so the nested edit reads
+      // back as `kept\n`. Replacing the whole `review` value reads back.
+      const source = '''
+---
+# Reviewed quarterly.
+type: Metric
+tags: [finance]  # kept
+review:
+  note: |+
+    kept
+
+  owner: finance
+---
+''';
+
+      expect(
+        _rewrite(source, (frontmatter) {
+          frontmatter['review'] = <String, Object?>{'note': 'kept\n\n'};
+        }),
+        '''
+---
+# Reviewed quarterly.
+type: Metric
+tags: [finance]  # kept
+review:
+  note: "kept\\n\\n"
+---
+''',
+      );
+    });
+
     test('re-emits a changed top-level value it cannot edit inside', () {
       const source = '''
 ---
@@ -806,6 +840,13 @@ tags: [finance]  # kept
             reason: '$name: $label reads back',
           );
           expect(parsed.body, document.body, reason: '$name: $label body');
+          if (source.contains('\r\n')) {
+            expect(
+              rewritten.replaceAll('\r\n', ''),
+              isNot(contains('\n')),
+              reason: '$name: $label keeps CRLF line breaks',
+            );
+          }
           expect(
             _isSubsequence(_untouchedLines(source, touched), _lines(rewritten)),
             isTrue,
