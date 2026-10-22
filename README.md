@@ -270,7 +270,7 @@ print(
 Bundle mutations go through one prepared write path. Preparation builds the
 complete candidate and runs the closed OKF Spec validator without touching
 disk. Callers may inspect the immutable candidate before committing the exact
-prepared bytes across concept, index, and log files together:
+prepared texts across concept, index, and log files together:
 
 ```dart
 import 'package:okf/okf_io.dart';

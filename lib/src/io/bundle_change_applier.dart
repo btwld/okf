@@ -25,7 +25,8 @@ part 'bundle_change_case_folding.dart';
 /// [prepare] builds the complete candidate, validates it with the fixed OKF
 /// Spec validator, and returns an opaque capability. [commit] accepts only
 /// that capability, rechecks the source snapshot, and transactionally writes
-/// the exact bytes captured during preparation.
+/// the exact texts captured during preparation, each after the UTF-8 byte
+/// order mark [prepare] describes when the file takes one.
 final class OkfBundleChangeApplier {
   /// Creates a write path. [clock] only dates generated log entries.
   const OkfBundleChangeApplier({this.clock = DateTime.now});
@@ -33,7 +34,8 @@ final class OkfBundleChangeApplier {
   /// Supplies the date generated log entries are recorded under.
   final DateTime Function() clock;
 
-  /// Commits exactly the bytes bound into [prepared].
+  /// Commits exactly the bytes bound into [prepared]: each prepared text in
+  /// UTF-8, after a byte order mark when [prepare] says the file takes one.
   Future<OkfBundleCommitResult> commit(OkfPreparedChange prepared) =>
       OkfBundleLock.write(
         prepared._plan.rootPath,
@@ -372,9 +374,11 @@ Future<void> _validateCandidatePaths(
 
 /// An immutable view of the complete candidate prepared for a bundle write.
 ///
-/// Concept values are the exact serialized Markdown bytes represented by the
-/// candidate. [toBundle] and [toLoadResult] return detached in-memory copies
-/// for downstream inspection; changing a copy cannot change a prepared write.
+/// Concept values are the exact serialized Markdown text represented by the
+/// candidate, which a commit writes in UTF-8, after a byte order mark when
+/// [OkfBundleChangeApplier.prepare] says the file takes one. [toBundle] and
+/// [toLoadResult] return detached in-memory copies for downstream
+/// inspection; changing a copy cannot change a prepared write.
 final class OkfPreparedCandidate {
   factory OkfPreparedCandidate._fromSnapshot({
     required OkfBundleLoadResult loaded,
