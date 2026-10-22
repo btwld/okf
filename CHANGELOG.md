@@ -4,31 +4,30 @@
   `OkfLinkConceptsChange` and `OkfDeprecateConceptChange` used to re-emit the
   whole concept in canonical form, which turned flow style into block style,
   moved keys such as `tags` and dropped comments. They now keep the exact
-  bytes of every frontmatter key they do not change, and of the body unless
-  an update replaces it: a changed value is replaced where it stands, a
-  changed flow collection has its changed values replaced and new entries
-  added after its last one (one that loses an entry is rewritten whole on one
-  line), a changed `|` or `>` block scalar stays a literal
-  block when its new value has a line break, a changed block mapping is
-  edited entry by entry, a removed key removes only its own lines, a new key
-  goes directly after the last entry of its mapping, and a link appends its
-  `sources` item after the last one. Frontmatter already in the canonical
-  form `okf format` writes stays canonical, with a new key at its place in
-  the preferred key order, so an edit never makes `okf format --check` fail
-  on a bundle that passed it. New lines take the file's line break,
-  so CRLF files stay CRLF, and a concept file that begins with a UTF-8 byte
-  order mark keeps it. Every edit is parsed again and must read back as the
-  requested mapping; otherwise the changed top-level values, and failing that
-  the whole mapping, are re-emitted, as the whole mapping is for frontmatter
-  written as one `{...}` mapping or with YAML aliases, explicit `?` keys or
-  collection keys. An update whose result equals the concept writes nothing,
-  now also when it only reorders a nested mapping's keys. An edit that cannot
-  be written so that it reads back, such as a body-only concept's new body
-  whose first line is `---`, throws `OkfBundleChangeException` from
-  `prepare`, and so does an edit whose input holds an unpaired surrogate,
-  naming the field or body that holds it before any rewrite is tried. New
-  concepts, `serialize` and `okf format` keep the canonical form. See
-  ADR-0010.
+  bytes of every frontmatter key they do not change, and of the body unless an
+  update replaces it: a changed value is replaced where it stands, a changed
+  flow collection has its changed values replaced and new entries added after
+  its last one (one that loses an entry is rewritten whole on one line), a
+  changed `|` or `>` block scalar stays a literal block when its new value has
+  a line break, a changed block mapping is edited entry by entry, a removed
+  key removes only its own lines, a new key goes directly after the last entry
+  of its mapping, and a link appends its `sources` item after the last one.
+  Frontmatter already in the canonical form `okf format` writes stays
+  canonical, with a new key at its place in the preferred key order, so an
+  edit never makes `okf format --check` fail on a bundle that passed it. New
+  lines take the file's line break, so CRLF files stay CRLF, and a concept
+  file that begins with a UTF-8 byte order mark keeps it. Every edit is parsed
+  again and must read back as the requested mapping; otherwise the changed
+  top-level values, and failing that the whole mapping, are re-emitted, as the
+  whole mapping is for frontmatter written as one `{...}` mapping or with YAML
+  aliases, explicit `?` keys or collection keys. An update whose result equals
+  the concept writes nothing, now also when it only reorders a nested
+  mapping's keys. An edit that cannot be written so that it reads back, such
+  as a body-only concept's new body whose first line is `---`, throws
+  `OkfBundleChangeException` from `prepare`, and so does an edit whose input
+  holds an unpaired surrogate, naming the field or body that holds it before
+  any rewrite is tried. New concepts, `serialize` and `okf format` keep the
+  canonical form. See ADR-0010.
 - Keep the UTF-8 byte order mark of every file a commit rewrites. A concept,
   `index.md` or `log.md` file that began with one keeps it, whether the
   change set or a reserved-file projection wrote its new text. The texts a
