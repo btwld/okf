@@ -69,7 +69,7 @@ final class OkfCli {
     try {
       final results = _parser.parse(arguments);
       if (results.flag('version')) {
-        _out('okf $okfPackageVersion');
+        _out('okf $okfVersion');
         return OkfExitCode.success.value;
       }
       if (results.flag('help')) {

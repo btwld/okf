@@ -33,7 +33,7 @@ Install the command-line tool with Homebrew:
 brew install btwld/tap/okf
 ```
 
-With Dart 3.9 or later, add the library:
+With Dart 3.11 or later, add the library:
 
 ```console
 dart pub add okf
@@ -94,7 +94,7 @@ Gate a repository on OKF Spec conformance with one step and no configuration:
 
 ```yaml
 steps:
-  - uses: btwld/okf@v0.5.0
+  - uses: btwld/okf@v0.5.1
 ```
 
 The action downloads the released `okf` archive for the ref in `uses`, unpacks
@@ -108,7 +108,7 @@ invocation, so CI reaches the same verdict as the command line. Inputs:
 Releases attach an `okf-<version>-<os>-<arch>.tar.gz` archive per platform, so
 the action runs on Linux and macOS runners.
 
-The Dart library and CLI are tested on Linux and Windows with Dart 3.9 and
+The Dart library and CLI are tested on Linux and Windows with Dart 3.11 and
 the current stable SDK. Windows support does not include this composite
 action or a prebuilt release binary; install the CLI through Dart on Windows.
 
@@ -197,11 +197,21 @@ the file to `.gitignore` if you do not want to commit it. Its name is exported
 as `okfBundleLockFileName` for tools that walk bundle directories directly.
 
 If a read starts before the first writer creates the file, it checks again and
-repeats under a shared lock when necessary. Locking is advisory, and POSIX file
-locks are process-scoped; applications using multiple isolates must serialize
-their own bundle access. Formatting a nested file cannot identify the enclosing
-bundle root, so it instead refuses to write or report against content that
-changed after it was read.
+repeats under a shared lock when necessary. Formatting a nested file cannot
+identify the enclosing bundle root, so it instead refuses to write or report
+against content that changed after it was read.
+
+Locking is advisory. Within one isolate, operations on a bundle queue behind
+each other; across processes, the lock file excludes them. On POSIX the lock
+is an `fcntl` record lock, which belongs to the process, not to an isolate:
+two isolates in one process do not exclude each other, and closing any handle
+on the lock file releases every claim the process holds, so a read finishing
+in one isolate can silently drop another isolate's write lock. **Run every
+okf operation on a bundle — loads, validation, graphs, formatting and writes —
+in one isolate per process.** `okf_io.dart` exports `OkfBundleLock` so
+applications can run their own reads and writes under the same claims;
+`OkfBundleLock.write` held around `prepare` and `commit` keeps the source from
+changing between them.
 
 ## Library
 
@@ -274,6 +284,34 @@ switch (result) {
     print(validation.report.toText());
 }
 ```
+
+A projection lets a caller rewrite the reserved `index.md` and `log.md` files
+of the same candidate, for example to apply its own index conventions or to
+record its own log entry. Projected texts are validated and committed with the
+rest of the change; a `null` text keeps the source file, and any path other
+than an `index.md` or `log.md` throws `OkfBundleChangeException`. With no
+changes, a projection repairs reserved files on its own:
+
+```dart
+final repair = await writer.prepare(
+  'path/to/bundle',
+  OkfBundleChangeSet(const <OkfBundleChange>[]),
+  project: (input) {
+    final base = input.base.bundle;
+    return <String, String?>{
+      for (final entry in const OkfIndexGenerator().generate(base).entries)
+        if (base.indexFiles.containsKey(entry.key)) entry.key: entry.value,
+    };
+  },
+);
+```
+
+`OkfPreparedCandidate.toLoadResult()` reads a candidate as a later load of the
+committed bundle would, so checks written against `OkfBundleLoadResult` can
+judge it before commit. `okfVersion` is this package's version, and
+`okfIndexGeneratorRevision` names the release that last changed the
+generator's output bytes; it changes only in a minor release, so compare
+generated indexes against it rather than against a patch range.
 
 See [`example/okf.dart`][example] for a complete command-line example.
 

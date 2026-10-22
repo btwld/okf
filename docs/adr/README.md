@@ -19,3 +19,5 @@ behaviour per unit of interface a caller must learn.
 | [0005](0005-single-graph-query-interface.md) | One graph filter vocabulary; CLI and MCP are two adapters |
 | [0006](0006-verdict-judges-loaded-content.md) | The Verdict judges loaded content; usage exits are adapter decisions |
 | [0007](0007-check-mode-exits-are-adapter-decisions.md) | Check-mode "would change" exits are adapter decisions |
+| [0008](0008-index-link-destination-grammar.md) | Index link destinations are percent-encoded |
+| [0009](0009-reserved-file-projection.md) | Reserved-file projection joins the single write path |

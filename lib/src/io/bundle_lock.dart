@@ -16,8 +16,18 @@ const String okfBundleLockFileName = '.okf.lock';
 /// file inside the bundle gives every process the same path and does not
 /// require write access to the bundle's parent directory.
 ///
-/// On POSIX, file locks are process-scoped. Applications that access bundles
-/// from multiple isolates must provide their own cross-isolate serialization.
+/// The loader, writer and change applier already take these claims; callers
+/// use them directly to run their own reads or writes under the same lock.
+/// Claims nest: an action may run further operations on the same bundle, and
+/// a shared claim cannot be upgraded to an exclusive one.
+///
+/// On POSIX the lock is an `fcntl` record lock, which belongs to the process
+/// rather than to an isolate. Isolates in one process do not exclude each
+/// other, and closing any descriptor of the lock file releases every claim
+/// the process holds on it, so a read finishing in one isolate can silently
+/// drop a write's lock in another. Run every operation on a bundle in one
+/// isolate per process.
+///
 /// A missing or invalid root is left for the operation itself to report.
 final class OkfBundleLock {
   OkfBundleLock._();

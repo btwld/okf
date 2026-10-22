@@ -5,12 +5,17 @@ import 'package:path/path.dart' as p;
 import 'bundle.dart';
 import 'index_log.dart';
 import 'link_path.dart';
+import 'version.dart';
 
 /// Supplies a deterministic description for a directory index.
 typedef OkfDirectoryDescriptionSynthesizer =
     String Function(String directory, List<OkfIndexEntry> entries);
 
 /// Generates deterministic, progressively disclosed `index.md` files.
+///
+/// For the same bundle and [synthesizeDescription], the output bytes stay the
+/// same across every release sharing one [okfIndexGeneratorRevision]. A change
+/// to them bumps that revision and ships only in a minor release.
 final class OkfIndexGenerator {
   /// Creates an index generator.
   const OkfIndexGenerator({this.synthesizeDescription});

@@ -1,3 +1,32 @@
+## 0.5.1
+
+- Add a reserved-file projection to `OkfBundleChangeApplier.prepare`. The
+  optional `project` callback receives the inspected source, the candidate,
+  the change set's files and its date, and returns texts for `index.md` and
+  `log.md` paths, or `null` to keep the source text. The projected texts are
+  validated with the rest of the candidate, so Spec-invalid output is refused,
+  and the commit writes exactly those bytes or refuses a stale source. Naming
+  any other path throws `OkfBundleChangeException`. An empty change set with a
+  projection repairs reserved files on their own. See ADR-0009.
+- Add `OkfPreparedCandidate.toLoadResult()`, which reads a candidate as a
+  later load of the committed bundle would, retaining load findings for
+  source files the candidate does not replace.
+- Export `OkfBundleLock` from `okf_io.dart`, so applications can run their own
+  reads and writes under the bundle's claims. Its documentation and the README
+  now state the rule the `fcntl` lock implies: run every operation on a bundle
+  in one isolate per process.
+- Export `okfVersion`, the package version, and `okfIndexGeneratorRevision`,
+  the release that last changed `OkfIndexGenerator`'s output bytes, from
+  `okf.dart`. The revision is `0.5.0` and changes only in a minor release.
+- Raise the minimum supported Dart SDK from 3.9 to 3.11 (#62).
+- Turn `OkfGraphResolution.fromWireValue` from a static method into a factory
+  constructor (#65). Calls and tear-offs compile unchanged.
+- Move the repository, issue tracker, Homebrew tap and composite action to
+  `btwld` (#66): install with `brew install btwld/tap/okf` and reference the
+  action as `btwld/okf@v0.5.1`.
+- Validate the package again when the release workflow publishes it to
+  pub.dev (#63).
+
 ## 0.5.0
 
 - Adopt OKF revision `62432a0`: every timestamp is an ISO 8601 datetime with a

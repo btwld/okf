@@ -506,6 +506,294 @@ title: Note
       );
     },
   );
+
+  group('reserved-file projection', () {
+    const projectedIndex =
+        '# Metric\n'
+        '\n'
+        '* [Churn](churn.md) - Projected churn.\n'
+        '* [Revenue](revenue.md) - Projected revenue.\n';
+    const projectedLog =
+        '# Log\n'
+        '\n'
+        '## 2026-08-18\n'
+        '\n'
+        '* **Recorded**: Churn, by the caller.\n'
+        '\n'
+        '## 2026-08-01\n'
+        '\n'
+        '* **Created**: [Revenue](metrics/revenue.md)\n';
+
+    test('commits exactly the projected bytes', () async {
+      late OkfProjectionInput seen;
+      final preparation = await changes.prepare(
+        root.path,
+        _createChurn(),
+        project: (input) {
+          seen = input;
+          return <String, String?>{
+            'metrics/index.md': projectedIndex,
+            'log.md': projectedLog,
+          };
+        },
+      );
+
+      expect(seen.date, DateTime.utc(2026, 8, 18));
+      expect(
+        seen.changedFiles.keys,
+        containsAll(<String>['metrics/churn.md', 'metrics/index.md', 'log.md']),
+      );
+      expect(seen.base.documents, isNot(contains('metrics/churn.md')));
+      expect(
+        seen.candidate.concepts['metrics/churn.md'],
+        seen.changedFiles['metrics/churn.md'],
+      );
+      expect(seen.candidate.logs['log.md'], seen.changedFiles['log.md']);
+
+      final prepared = (preparation as OkfPreparationReady).prepared;
+      expect(prepared.candidate.indexes['metrics/index.md'], projectedIndex);
+      expect(prepared.candidate.logs['log.md'], projectedLog);
+      expect(
+        prepared.validation.report.toJson(),
+        const OkfSpecValidator()
+            .validate(prepared.candidate.toBundle())
+            .report
+            .toJson(),
+      );
+
+      final result = await changes.commit(prepared);
+      expect(result.changedPaths, unorderedEquals(seen.changedFiles.keys));
+      expect(
+        await _readBytes(root, 'metrics/index.md'),
+        utf8.encode(projectedIndex),
+      );
+      expect(await _readBytes(root, 'log.md'), utf8.encode(projectedLog));
+    });
+
+    test('null keeps the source text or its absence', () async {
+      final sourceLog = await _read(root, 'log.md');
+      final sourceIndex = await _read(root, 'index.md');
+      final prepared =
+          (await changes.prepare(
+                    root.path,
+                    _createChurn(id: 'reports/churn'),
+                    project: (_) => <String, String?>{
+                      'log.md': null,
+                      'reports/index.md': null,
+                      'index.md': sourceIndex,
+                    },
+                  )
+                  as OkfPreparationReady)
+              .prepared;
+
+      expect(prepared.candidate.logs['log.md'], sourceLog);
+      expect(prepared.candidate.indexes, isNot(contains('reports/index.md')));
+      final result = await changes.commit(prepared);
+
+      expect(result.changedPaths, <String>['reports/churn.md']);
+      expect(await _read(root, 'log.md'), sourceLog);
+      expect(await _read(root, 'index.md'), sourceIndex);
+      expect(
+        await File(p.join(root.path, 'reports', 'index.md')).exists(),
+        isFalse,
+      );
+    });
+
+    test('a path other than a reserved file is a tool error', () async {
+      final before = await _snapshot(root);
+
+      for (final path in <String>[
+        'metrics/revenue.md',
+        'metrics/churn.md',
+        'metrics/data.csv',
+        'metrics/INDEX.md',
+        'metrics/index.md/',
+        '../index.md',
+        '/log.md',
+      ]) {
+        await expectLater(
+          changes.prepare(
+            root.path,
+            _createChurn(),
+            project: (_) => <String, String?>{path: projectedIndex},
+          ),
+          throwsA(isA<OkfBundleChangeException>()),
+          reason: path,
+        );
+      }
+
+      expect(await _snapshot(root), before);
+    });
+
+    test('Spec-invalid projected output is refused', () async {
+      final before = await _snapshot(root);
+      final result = await changes.prepare(
+        root.path,
+        _createChurn(),
+        project: (_) => const <String, String?>{
+          'metrics/index.md': 'Not an index.\n',
+          'log.md': '---\nowner: caller\n---\n\n$projectedLog',
+        },
+      );
+
+      expect(result, isA<OkfPreparationRefused>());
+      expect(
+        (result as OkfPreparationRefused).validation.report.findings.map(
+          (finding) => (finding.id.value, finding.location?.path),
+        ),
+        containsAll(<(String, String)>[
+          ('okf/invalid-index-structure', 'metrics/index.md'),
+          ('okf/invalid-log-frontmatter', 'log.md'),
+        ]),
+      );
+      expect(await _snapshot(root), before);
+    });
+
+    test('a source change after projection is refused at commit', () async {
+      final prepared =
+          (await changes.prepare(
+                    root.path,
+                    _createChurn(),
+                    project: (_) => const <String, String?>{
+                      'metrics/index.md': projectedIndex,
+                    },
+                  )
+                  as OkfPreparationReady)
+              .prepared;
+      await _write(
+        root,
+        'metrics/revenue.md',
+        '${await _read(root, 'metrics/revenue.md')}\n',
+      );
+      final before = await _snapshot(root);
+
+      await expectLater(
+        changes.commit(prepared),
+        throwsA(isA<OkfStalePreparedChangeException>()),
+      );
+      expect(await _snapshot(root), before);
+    });
+
+    test('a projection that changes the source is refused at commit', () async {
+      final prepared =
+          (await changes.prepare(
+                    root.path,
+                    _createChurn(),
+                    project: (_) async {
+                      await _write(root, 'notes.txt', 'written mid-prepare\n');
+                      return const <String, String?>{};
+                    },
+                  )
+                  as OkfPreparationReady)
+              .prepared;
+
+      await expectLater(
+        changes.commit(prepared),
+        throwsA(isA<OkfStalePreparedChangeException>()),
+      );
+      expect(
+        await File(p.join(root.path, 'metrics', 'churn.md')).exists(),
+        isFalse,
+      );
+    });
+
+    test('an empty change set with a projection repairs indexes', () async {
+      final generated = await _read(root, 'metrics/index.md');
+      await _write(root, 'metrics/index.md', projectedIndex);
+      final log = await _read(root, 'log.md');
+
+      final prepared =
+          (await changes.prepare(
+                    root.path,
+                    OkfBundleChangeSet(const <OkfBundleChange>[]),
+                    project: (input) => <String, String?>{
+                      'metrics/index.md': const OkfIndexGenerator().generate(
+                        input.base.bundle,
+                      )['metrics/index.md'],
+                    },
+                  )
+                  as OkfPreparationReady)
+              .prepared;
+      final result = await changes.commit(prepared);
+
+      expect(result.changedPaths, <String>['metrics/index.md']);
+      expect(await _read(root, 'metrics/index.md'), generated);
+      expect(await _read(root, 'log.md'), log);
+    });
+  });
+
+  group('toLoadResult', () {
+    test('reads the candidate as a later load would', () async {
+      await _write(root, 'metrics/data.csv', 'month,revenue\n');
+      await _write(root, 'archive/old.md', '---\ntype: Reference\n---\n');
+      // The change replaces a file that fails to load.
+      await _write(root, 'a/churn.md', '');
+      await File(p.join(root.path, 'a', 'churn.md')).writeAsBytes(<int>[0xff]);
+      final prepared =
+          (await changes.prepare(root.path, _createChurn(id: 'a/churn'))
+                  as OkfPreparationReady)
+              .prepared;
+      final candidate = prepared.candidate.toLoadResult();
+      expect(candidate.report.findings, isEmpty);
+      expect(
+        candidate.validate().report.toJson(),
+        prepared.validation.report.toJson(),
+      );
+
+      await changes.commit(prepared);
+      final loaded = await const OkfBundleLoader().inspect(root.path);
+
+      expect(candidate.rootPath, loaded.rootPath);
+      expect(candidate.paths, loaded.paths);
+      expect(
+        candidate.documents
+            .map((path, document) {
+              return MapEntry(path, document.serialize());
+            })
+            .entries
+            .map((entry) => (entry.key, entry.value)),
+        orderedEquals(
+          loaded.documents
+              .map((path, document) {
+                return MapEntry(path, document.serialize());
+              })
+              .entries
+              .map((entry) => (entry.key, entry.value)),
+        ),
+      );
+      expect(
+        candidate.indexes.entries.map((entry) => (entry.key, entry.value)),
+        orderedEquals(
+          loaded.indexes.entries.map((entry) => (entry.key, entry.value)),
+        ),
+      );
+      expect(candidate.logs, loaded.logs);
+      expect(candidate.assets, loaded.assets);
+      expect(candidate.report.toJson(), loaded.report.toJson());
+    });
+
+    test('keeps load findings for files the candidate keeps', () async {
+      await File(p.join(root.path, 'broken.md')).writeAsBytes(<int>[0xff]);
+      late OkfBundleLoadResult candidate;
+
+      final result = await changes.prepare(
+        root.path,
+        _createChurn(),
+        project: (input) {
+          candidate = input.candidate.toLoadResult();
+          return const <String, String?>{};
+        },
+      );
+
+      expect(result, isA<OkfPreparationRefused>());
+      expect(
+        candidate.report.findings.map((finding) => finding.location?.path),
+        <String>['broken.md'],
+      );
+      expect(candidate.paths, contains('broken.md'));
+      expect(candidate.documents, contains('metrics/churn.md'));
+    });
+  });
 }
 
 const String _richBody = '''
@@ -565,6 +853,10 @@ okf_version: "0.2"
 Future<String> _read(Directory root, String relativePath) => File(
   p.joinAll(<String>[root.path, ...p.posix.split(relativePath)]),
 ).readAsString();
+
+Future<List<int>> _readBytes(Directory root, String relativePath) => File(
+  p.joinAll(<String>[root.path, ...p.posix.split(relativePath)]),
+).readAsBytes();
 
 Future<Map<String, String>> _snapshot(Directory root) async {
   final files = <String, String>{};

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:okf/okf_io.dart';
-import 'package:okf/src/io/bundle_lock.dart' show OkfBundleLock;
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 

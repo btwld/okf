@@ -127,6 +127,80 @@ okf_version: " 0.2 "
     expect(generated['index.md'], contains('[attesters](attesters/index.md)'));
     expect(generated, isNot(contains('attesters/index.md')));
   });
+
+  test('output bytes are pinned to the generator revision', () {
+    // Consumers compare indexes with this output under one revision. Changed
+    // bytes are a new revision: bump okfIndexGeneratorRevision and ship the
+    // change only in a minor release (ADR-0009).
+    expect(okfIndexGeneratorRevision, '0.5.0');
+
+    final bundle = OkfBundle.fromDocuments(
+      <String, OkfDocument>{
+        'datasets/ga4.md': _document(
+          'BigQuery Dataset',
+          title: 'GA4',
+          description: 'GA4 obfuscated ecommerce sample.',
+        ),
+        'tables/events.md': _document(
+          'BigQuery Table',
+          title: 'Events',
+          description: 'Daily event rows.',
+        ),
+        'tables/users.md': _document('BigQuery Table', title: 'users'),
+        'métricas/receita líquida.md': _document(
+          'Metric',
+          title: 'Receita líquida',
+        ),
+        'guides/setup (draft).md': _document('Guide', title: 'Setup'),
+      },
+      indexes: <String, String>{
+        'index.md': '---\nokf_version: "0.2"\n---\n# Old\n* [Old](old.md)\n',
+      },
+      logs: <String, String>{'log.md': '# Log\n## 2026-07-27\n* Update\n'},
+    );
+
+    final generated = const OkfIndexGenerator().generate(bundle);
+
+    expect(
+      generated.entries.map((entry) => (entry.key, entry.value)),
+      <(String, String)>[
+        (
+          'datasets/index.md',
+          '# BigQuery Dataset\n'
+              '\n'
+              '* [GA4](ga4.md) - GA4 obfuscated ecommerce sample.\n',
+        ),
+        ('guides/index.md', '# Guide\n\n* [Setup](setup%20%28draft%29.md)\n'),
+        (
+          'métricas/index.md',
+          '# Metric\n\n* [Receita líquida](receita%20l%C3%ADquida.md)\n',
+        ),
+        (
+          'tables/index.md',
+          '# BigQuery Table\n'
+              '\n'
+              '* [Events](events.md) - Daily event rows.\n'
+              '* [users](users.md)\n',
+        ),
+        (
+          'index.md',
+          '---\n'
+              'okf_version: "0.2"\n'
+              '---\n'
+              '\n'
+              '# Subdirectories\n'
+              '\n'
+              '* [datasets](datasets/index.md) - GA4 obfuscated ecommerce '
+              'sample.\n'
+              '* [guides](guides/index.md) - Contains 1 entries: Setup.\n'
+              '* [métricas](m%C3%A9tricas/index.md) - Contains 1 entries: '
+              'Receita líquida.\n'
+              '* [tables](tables/index.md) - Contains 2 entries: Events, '
+              'users.\n',
+        ),
+      ],
+    );
+  });
 }
 
 OkfDocument _document(String type, {String? title, String? description}) =>

@@ -119,8 +119,10 @@ final class OkfBundleChangeSet {
 ///
 /// This is the tool-error tier of the write path: creating a concept that
 /// already exists, or touching one that does not, describes no bundle state
-/// at all, so there is no report to refuse with. A change that describes a
-/// state the Spec rejects is an [OkfPreparationRefused] instead.
+/// at all, so there is no report to refuse with. So is a reserved-file
+/// projection that names a path other than an `index.md` or `log.md` file. A
+/// change that describes a state the Spec rejects is an
+/// [OkfPreparationRefused] instead.
 final class OkfBundleChangeException implements Exception {
   /// Creates a change-description exception.
   const OkfBundleChangeException(this.message);
