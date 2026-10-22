@@ -1,9 +1,12 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:okf/okf.dart';
 import 'package:okf/src/frontmatter_rewriter.dart';
 import 'package:test/test.dart';
 import 'package:yaml/yaml.dart';
+
+import 'support.dart';
 
 void main() {
   test('the rewriter stays out of the public libraries', () {
@@ -912,7 +915,7 @@ tags: [finance]  # kept
       );
     });
 
-    test('throws when a value cannot be written so that it reads back', () {
+    test('throws when a value cannot be written as YAML', () {
       final document = OkfDocument.parse('---\ntype: Metric\n---\n');
 
       expect(
@@ -930,6 +933,87 @@ tags: [finance]  # kept
         ),
         throwsA(isA<OkfYamlEncodeException>()),
       );
+    });
+
+    test('every result reads back as the requested mapping', () {
+      // Every layout rule leans on this check: whatever path wrote the text,
+      // it parses to exactly the requested values, where an integer never
+      // equals a double, or the rewrite falls back or throws.
+      var rewrites = 0;
+      for (final MapEntry(key: name, value: source) in _fixtures.entries) {
+        final document = OkfDocument.parse(source);
+        final original = document.frontmatter;
+        for (final value in _awkwardValues) {
+          final cases = <String, Map<String, Object?>>{
+            'add': <String, Object?>{...original, 'x_added': value},
+            for (final key in original.keys) ...<String, Map<String, Object?>>{
+              'set $key': <String, Object?>{...original, key: value},
+              if (original[key] case final Map<Object?, Object?> entries
+                  when entries.isNotEmpty)
+                'set inside $key': <String, Object?>{
+                  ...original,
+                  key: <Object?, Object?>{
+                    ...entries,
+                    entries.keys.first: value,
+                  },
+                },
+              if (original[key] case final List<Object?> items
+                  when items.isNotEmpty) ...<String, Map<String, Object?>>{
+                'append to $key': <String, Object?>{
+                  ...original,
+                  key: <Object?>[...items, value],
+                },
+                'set the first item of $key': <String, Object?>{
+                  ...original,
+                  key: <Object?>[value, ...items.skip(1)],
+                },
+              },
+            },
+          };
+          for (final MapEntry(key: label, value: frontmatter)
+              in cases.entries) {
+            rewrites++;
+            final reason = '$name: $label to ${jsonEncode('$value')}';
+            final parsed = OkfDocument.parse(
+              document.rewriteSource(frontmatter: frontmatter),
+            );
+            expect(
+              sameYamlData(parsed.frontmatter, _yamlData(frontmatter)),
+              isTrue,
+              reason: reason,
+            );
+            expect(parsed.body, document.body, reason: reason);
+          }
+        }
+      }
+      expect(rewrites, greaterThan(4000));
+    });
+
+    test('throws rather than return a text that does not read back', () {
+      // Dart finds no NaN key in a map, so no text reads back as a mapping
+      // with one: every attempt fails the check.
+      final frontmatter = <String, Object?>{
+        'type': 'Metric',
+        'x': <Object?, Object?>{double.nan: 1},
+      };
+      for (final document in <OkfDocument>[
+        OkfDocument.parse('---\ntype: Metric\n---\n'),
+        OkfDocument.parse('---\ntype: Metric\nx: {a: 1}\n---\n'),
+        OkfDocument.parse('Body only.\n'),
+        OkfDocument(frontmatter: const <String, Object?>{'type': 'Metric'}),
+      ]) {
+        expect(
+          () => document.rewriteSource(frontmatter: frontmatter),
+          throwsA(
+            isA<OkfYamlEncodeException>().having(
+              (error) => error.message,
+              'message',
+              contains('reads back as the requested values'),
+            ),
+          ),
+          reason: document.sourceText,
+        );
+      }
     });
 
     test('keeps every untouched entry of every fixture', () {
@@ -1080,6 +1164,73 @@ bool _isSubsequence(List<String> needle, List<String> haystack) {
   }
   return matched == needle.length;
 }
+
+/// Values whose spelling or style is easy to get wrong: strings that read as
+/// other types or as YAML syntax, line breaks and control characters,
+/// integers next to doubles, and empty and nested collections.
+final List<Object?> _awkwardValues = <Object?>[
+  '',
+  ' padded',
+  'trailing ',
+  '2026-08-18',
+  '2026-08-18T00:00:00Z',
+  'true',
+  'False',
+  'null',
+  '~',
+  'yes',
+  '1',
+  '1.0',
+  '0x1F',
+  '.inf',
+  '.nan',
+  '#hash',
+  'a: b',
+  'ends:',
+  '- dash',
+  '[flow]',
+  '{flow}',
+  '*alias',
+  '&anchor',
+  '!tag',
+  '|',
+  '>',
+  '"quoted"',
+  "'single'",
+  'multi\nline',
+  'multi\nline\n',
+  'two\n\nbreaks\n\n',
+  'tab\there',
+  'Größe',
+  '😀',
+  '---',
+  '...',
+  'a\u2028b',
+  'a\u0085b',
+  'a\u0000b',
+  'a\u007Fb',
+  '\uFEFFmark',
+  'cr\rhere',
+  'crlf\r\nhere',
+  1,
+  1.0,
+  -0.0,
+  1e300,
+  -5,
+  double.nan,
+  double.infinity,
+  true,
+  false,
+  null,
+  <Object?>[],
+  <String, Object?>{},
+  <Object?>[1, 'two', null, <Object?>[]],
+  <String, Object?>{
+    'k': <Object?>['v'],
+    'n': null,
+  },
+  DateTime.utc(2026, 8, 18),
+];
 
 const String _styled = '''
 ---

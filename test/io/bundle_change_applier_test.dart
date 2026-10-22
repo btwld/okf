@@ -801,6 +801,54 @@ description: Recognized monthly revenue.
 ''');
     });
 
+    test('an edit reads back as the requested values', () async {
+      final requested = <String, Object?>{
+        'title': '2026-08-18',
+        'tags': <Object?>['1', 1, 1.0, 'true'],
+        'generated': <String, Object?>{
+          'by': 'agent: okf',
+          'at': DateTime.utc(2026, 9, 1),
+        },
+        'description': 'Two lines.\nAnd a trailing break.\n',
+        'owner': null,
+      };
+      final expected = <String, Object?>{
+        ...OkfDocument.parse(styled).frontmatter,
+        ...requested,
+        'generated': <String, Object?>{
+          'by': 'agent: okf',
+          'at': '2026-09-01T00:00:00.000Z',
+        },
+      }..remove('owner');
+
+      final preparation = await changes.prepare(
+        root.path,
+        OkfBundleChangeSet(<OkfBundleChange>[
+          OkfUpdateConceptChange(
+            id: OkfConceptId('metrics/revenue'),
+            frontmatterChanges: requested,
+          ),
+        ]),
+      );
+      final prepared = (preparation as OkfPreparationReady).prepared;
+      final text = prepared.candidate.concepts['metrics/revenue.md']!;
+      expect(
+        sameYamlData(OkfDocument.parse(text).frontmatter, expected),
+        isTrue,
+        reason: text,
+      );
+
+      await changes.commit(prepared);
+      final loaded = await const OkfBundleLoader().inspect(root.path);
+      expect(
+        sameYamlData(
+          loaded.documents['metrics/revenue.md']!.frontmatter,
+          expected,
+        ),
+        isTrue,
+      );
+    });
+
     test('a link appends to the sources list in place', () async {
       await commit(
         OkfLinkConceptsChange(
