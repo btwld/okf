@@ -682,7 +682,7 @@ sources:
 type: Metric
 title: 'Revenue'   # shown in indexes
 tags: [finance, monthly]
-generated: {by: agent:okf, at: "2026-09-01T00:00:00Z"}
+generated: { by: agent:okf, at: "2026-09-01T00:00:00Z" }
 # Kept by the finance team.
 status: draft
 sources:

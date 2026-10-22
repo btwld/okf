@@ -27,13 +27,21 @@ void main() {
       );
     });
 
-    test('writes a changed flow collection in flow style', () {
+    test('edits a changed flow collection by spans', () {
       expect(
         _rewrite(_styled, (frontmatter) {
           frontmatter['tags'] = <Object?>['finance', 'monthly', 'q3 close'];
           frontmatter['generated'] = <String, Object?>{
             'by': 'agent:okf',
             'at': '2026-09-01T00:00:00Z',
+          };
+          frontmatter['verified'] = <String, Object?>{
+            'by': 'human:reviewer',
+            'at': '2026-09-02T00:00:00Z',
+            'note': <Object?>[
+              'ledger',
+              <String, Object?>{'tie': 'out'},
+            ],
           };
         }),
         _styled
@@ -43,8 +51,77 @@ void main() {
             )
             .replaceFirst(
               'generated: { by: agent:okf, at: 2026-08-01T00:00:00Z }',
-              'generated: {by: agent:okf, at: "2026-09-01T00:00:00Z"}',
+              'generated: { by: agent:okf, at: "2026-09-01T00:00:00Z" }',
+            )
+            .replaceFirst(
+              'verified: { by: "human:reviewer", at: "2026-08-02T00:00:00Z" }',
+              'verified: { by: "human:reviewer", at: "2026-09-02T00:00:00Z", '
+                  'note: [ledger, {tie: out}] }',
             ),
+      );
+
+      const source = '''
+---
+type: Metric
+owners: [ana , bo]  # by seniority
+review: {cadence: quarterly, steps: [draft, sign]}
+aliases: [
+  revenue,
+  sales
+]
+---
+''';
+      expect(
+        _rewrite(source, (frontmatter) {
+          frontmatter['owners'] = <Object?>['cy', 'bo', 'di'];
+          frontmatter['review'] = <String, Object?>{
+            'cadence': 'monthly',
+            'steps': <Object?>['draft', 'sign', 'publish'],
+          };
+          frontmatter['aliases'] = <Object?>['revenue', 'sales', 'income'];
+        }),
+        '''
+---
+type: Metric
+owners: [cy , bo, di]  # by seniority
+review: {cadence: monthly, steps: [draft, sign, publish]}
+aliases: [
+  revenue,
+  sales, income
+]
+---
+''',
+      );
+    });
+
+    test('rewrites a flow collection whole when it loses an entry', () {
+      expect(
+        _rewrite(
+          '''
+---
+type: Metric
+verified: { by: "human:reviewer", at: "2026-08-02T00:00:00Z" }  # kept
+tags: [finance, monthly]
+owner: {name}
+---
+''',
+          (frontmatter) {
+            frontmatter['verified'] = <String, Object?>{'by': 'human:reviewer'};
+            frontmatter['tags'] = <Object?>['finance'];
+            frontmatter['owner'] = <String, Object?>{'name': 'ana'};
+          },
+        ),
+        '''
+---
+type: Metric
+verified: {by: human:reviewer}  # kept
+tags: [finance]
+owner: {name: ana}
+---
+''',
+        reason:
+            'a removed entry or an omitted value is written whole, with '
+            'OkfYamlEmitter.scalar spellings',
       );
     });
 

@@ -292,6 +292,8 @@ String _canonicalBody(String body) {
       : '$normalized\n';
 }
 
+final RegExp _lineBreak = RegExp('[\r\n]');
+
 /// An in-place edit could not be made; the caller tries a coarser one.
 final class _NotInPlace implements Exception {
   const _NotInPlace();
@@ -459,8 +461,8 @@ final class _Edit {
 
 /// One attempt at editing the frontmatter in place.
 ///
-/// With [nested] it edits inside block mappings and block sequences;
-/// without it, it replaces the whole value of each changed top-level key.
+/// With [nested] it edits inside block and flow collections; without it,
+/// it replaces the whole value of each changed top-level key.
 final class _InPlaceEdit {
   _InPlaceEdit(this.layout, this.emitter, {required this.nested});
 
@@ -561,25 +563,29 @@ final class _InPlaceEdit {
     );
   }
 
-  /// Edits a block collection's own entries or items, keeping the rest.
+  /// Edits a collection's own entries or items, keeping the rest: a block
+  /// collection line by line, a flow collection by spans.
   bool _editInside(YamlNode node, Object? old, Object? replacement) {
     if (!nested) {
       return false;
     }
     if (node is YamlMap &&
-        node.style == CollectionStyle.BLOCK &&
         old is Map &&
         replacement is Map &&
         replacement.isNotEmpty) {
-      _mapping(node, old, replacement);
-      return true;
+      if (node.style == CollectionStyle.BLOCK) {
+        _mapping(node, old, replacement);
+        return true;
+      }
+      return _flowMapping(node, old, replacement);
     }
     if (node is YamlList &&
-        node.style == CollectionStyle.BLOCK &&
         old is List &&
         replacement is List &&
         replacement.isNotEmpty) {
-      return _sequence(node, old, replacement);
+      return node.style == CollectionStyle.BLOCK
+          ? _sequence(node, old, replacement)
+          : _flowSequence(node, old, replacement);
     }
     return false;
   }
@@ -587,19 +593,29 @@ final class _InPlaceEdit {
   /// Replaces a one-line scalar or a flow collection by its span, keeping
   /// whatever shares its lines, such as a trailing comment.
   ///
-  /// An omitted value is not replaced this way: its empty span lies on the
-  /// `:` or `-` indicator before it.
-  bool _replaceInline(YamlNode node, Object? replacement) {
+  /// A flow collection, and with [inFlow] any node inside one, takes the
+  /// flow form of a collection; a scalar outside a flow collection takes
+  /// only a scalar or an empty collection.
+  bool _replaceInline(
+    YamlNode node,
+    Object? replacement, {
+    bool inFlow = false,
+  }) {
+    final end = _textEnd(node);
+    if (end == null) {
+      return false;
+    }
+    final start = layout.offset(_startOf(node));
     final String? text;
-    if (node.span.length == 0) {
-      text = null;
-    } else if (node is YamlScalar) {
+    if (node is YamlScalar) {
       text =
-          node.style != ScalarStyle.LITERAL &&
-              node.style != ScalarStyle.FOLDED &&
-              node.span.start.line == node.span.end.line
-          ? _inline(replacement)
-          : null;
+          node.style == ScalarStyle.LITERAL ||
+              node.style == ScalarStyle.FOLDED ||
+              layout.source.substring(start, end).contains(_lineBreak)
+          ? null
+          : inFlow
+          ? _flow(replacement)
+          : _inline(replacement);
     } else if (node is YamlList && node.style == CollectionStyle.FLOW ||
         node is YamlMap && node.style == CollectionStyle.FLOW) {
       text = _flow(replacement);
@@ -609,8 +625,115 @@ final class _InPlaceEdit {
     if (text == null) {
       return false;
     }
+    _edits.add(_Edit(start, end, text));
+    return true;
+  }
+
+  /// The offset at which a node's own text ends, or null when it cannot be
+  /// told from its span.
+  ///
+  /// An omitted value has an empty span on the `:` or `-` indicator before
+  /// it. A plain scalar's span inside a flow collection runs on over the
+  /// whitespace and line breaks before the next `,` or bracket, which are not
+  /// its text; for a plain scalar whose own text spans lines, where that
+  /// text ends is not told apart from them.
+  int? _textEnd(YamlNode node) {
+    if (node.span.length == 0) {
+      return null;
+    }
+    if (node is YamlScalar && node.style == ScalarStyle.PLAIN) {
+      final text = node.span.text.trimRight();
+      return text.contains('\n')
+          ? null
+          : layout.offset(_startOf(node)) + text.length;
+    }
+    return layout.offset(_endOf(node));
+  }
+
+  /// Edits a flow mapping by spans: each changed value where it stands, and
+  /// each new entry after the last one as `, key: value`.
+  ///
+  /// Records nothing and returns false when an entry is removed, or when a
+  /// changed value or the last one cannot be located by its span; the caller
+  /// then replaces the whole mapping.
+  bool _flowMapping(
+    YamlMap node,
+    Map<Object?, Object?> old,
+    Map<Object?, Object?> replacement,
+  ) {
+    final entries = node.nodes.entries.toList();
+    if (entries.isEmpty ||
+        old.keys.any((key) => !replacement.containsKey(key))) {
+      return false;
+    }
+    final mark = _edits.length;
+    for (final MapEntry(:key, :value) in entries) {
+      final name = (key as YamlNode).value;
+      if (!_sameYaml(old[name], replacement[name]) &&
+          !_replaceFlowItem(value, old[name], replacement[name])) {
+        _edits.length = mark;
+        return false;
+      }
+    }
+    final added = <String>[
+      for (final MapEntry(:key, :value) in replacement.entries)
+        if (!old.containsKey(key)) '${emitter.scalar(key)}: ${_flow(value)}',
+    ];
+    if (!_appendFlow(entries.last.value, added)) {
+      _edits.length = mark;
+      return false;
+    }
+    return true;
+  }
+
+  /// Edits a flow sequence by spans: each changed item where it stands, and
+  /// each item added at its end after the last one as `, item`.
+  ///
+  /// Records nothing and returns false when the sequence gets shorter, or
+  /// when a changed item or the last one cannot be located by its span.
+  bool _flowSequence(
+    YamlList node,
+    List<Object?> old,
+    List<Object?> replacement,
+  ) {
+    final items = node.nodes;
+    if (items.isEmpty || replacement.length < old.length) {
+      return false;
+    }
+    final mark = _edits.length;
+    for (var index = 0; index < items.length; index++) {
+      if (!_sameYaml(old[index], replacement[index]) &&
+          !_replaceFlowItem(items[index], old[index], replacement[index])) {
+        _edits.length = mark;
+        return false;
+      }
+    }
+    final added = <String>[
+      for (final item in replacement.skip(old.length)) _flow(item),
+    ];
+    if (!_appendFlow(items.last, added)) {
+      _edits.length = mark;
+      return false;
+    }
+    return true;
+  }
+
+  bool _replaceFlowItem(YamlNode node, Object? old, Object? replacement) =>
+      _editInside(node, old, replacement) ||
+      _replaceInline(node, replacement, inFlow: true);
+
+  /// Inserts [texts] directly after [last], the last entry's value or the
+  /// last item of a flow collection, each after `, `.
+  bool _appendFlow(YamlNode last, List<String> texts) {
+    if (texts.isEmpty) {
+      return true;
+    }
+    final end = _textEnd(last);
+    if (end == null) {
+      return false;
+    }
     _edits.add(
-      _Edit(layout.offset(_startOf(node)), layout.offset(_endOf(node)), text),
+      _Edit(end, end, <String>[for (final text in texts) ', $text'].join()),
     );
     return true;
   }
@@ -745,31 +868,20 @@ final class _InPlaceEdit {
     return emitter.scalar(value);
   }
 
-  /// The flow form of a collection of one-line values, or null.
-  String? _flow(Object? value) {
-    if (value is List) {
-      final items = <String>[];
-      for (final item in value) {
-        final text = _inline(item);
-        if (text == null) {
-          return null;
-        }
-        items.add(text);
-      }
-      return '[${items.join(', ')}]';
+  /// The one-line form of any value: a collection in flow style, as
+  /// `[a, b]` or `{key: value}`, and a scalar as [_inline] writes it.
+  String _flow(Object? value) {
+    if (value is List && value.isNotEmpty) {
+      return '[${<String>[for (final item in value) _flow(item)].join(', ')}]';
     }
-    if (value is Map) {
-      final entries = <String>[];
-      for (final entry in value.entries) {
-        final text = _inline(entry.value);
-        if (text == null) {
-          return null;
-        }
-        entries.add('${emitter.scalar(entry.key)}: $text');
-      }
+    if (value is Map && value.isNotEmpty) {
+      final entries = <String>[
+        for (final entry in value.entries)
+          '${emitter.scalar(entry.key)}: ${_flow(entry.value)}',
+      ];
       return '{${entries.join(', ')}}';
     }
-    return null;
+    return _inline(value)!;
   }
 
   /// Where a node's own text ends: its last child's end for a block
