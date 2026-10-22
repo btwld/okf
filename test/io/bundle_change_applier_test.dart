@@ -638,6 +638,25 @@ title: Note
       expect(await _readBytes(root, 'log.md'), utf8.encode(projectedLog));
     });
 
+    test('the projection sees the date the change set logs', () async {
+      var day = 17;
+      final advancing = OkfBundleChangeApplier(
+        clock: () => DateTime.utc(2026, 8, day++),
+      );
+      late OkfProjectionInput seen;
+      await advancing.prepare(
+        root.path,
+        _createChurn(),
+        project: (input) {
+          seen = input;
+          return const <String, String?>{};
+        },
+      );
+
+      expect(seen.date, DateTime.utc(2026, 8, 17));
+      expect(seen.changedFiles['log.md'], contains('## 2026-08-17'));
+    });
+
     test('null keeps the source text or its absence', () async {
       final sourceLog = await _read(root, 'log.md');
       final sourceIndex = await _read(root, 'index.md');
