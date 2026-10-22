@@ -6,7 +6,10 @@ const String okfVersion = '0.5.1';
 
 /// The revision of the bytes `OkfIndexGenerator` emits.
 ///
-/// It names the release that last changed the generator's output for any
-/// bundle, so consumers that compare indexes with generated output pin this
-/// value rather than [okfVersion]. It changes only in a minor release.
+/// Every release with the same revision generates the same indexes for the
+/// same bundle, so consumers that compare indexes with generated output pin
+/// this value rather than [okfVersion]. `0.5.0` is the baseline the promise
+/// starts from, not the release that last changed the output. A later change
+/// to the output ships only in a minor release, which sets the revision to
+/// its own version.
 const String okfIndexGeneratorRevision = '0.5.0';

@@ -58,9 +58,13 @@ of the lock file drops every claim the process holds on it. Every okf
 operation on a bundle therefore runs on one isolate per process, where the
 isolate-local queue orders them and the lock file excludes other processes.
 
-`okfIndexGeneratorRevision` names the release that last changed
-`OkfIndexGenerator`'s output bytes. Generator output changes only in a minor
-release, which bumps the revision; patch releases never change it.
+`okfIndexGeneratorRevision` identifies `OkfIndexGenerator`'s output bytes:
+every release with the same revision generates the same bytes for the same
+bundle. Its first value, `0.5.0`, is the baseline the promise starts from,
+not the release that last changed the output; 0.5.0 left the generator
+untouched. Generator output changes only in a minor release, which sets the
+revision to its own version; patch releases never change it. A golden test
+ties the generator's output to the revision.
 
 ## Consequences
 

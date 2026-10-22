@@ -23,8 +23,11 @@
   now state the rule the `fcntl` lock implies: run every operation on a bundle
   in one isolate per process.
 - Export `okfVersion`, the package version, and `okfIndexGeneratorRevision`,
-  the release that last changed `OkfIndexGenerator`'s output bytes, from
-  `okf.dart`. The revision is `0.5.0` and changes only in a minor release.
+  which identifies `OkfIndexGenerator`'s output bytes, from `okf.dart`. Every
+  release with the same revision generates the same indexes for the same
+  bundle. The revision is `0.5.0`, the baseline the promise starts from; a
+  later change to the output ships only in a minor release, which sets the
+  revision to its own version.
 - Add `OkfDocument.bodyStartLine`, the 1-based line of the parsed text on
   which the body begins, so a host can cite body text by file line instead of
   assuming the body is a suffix of the file: line `n` of `body` is line

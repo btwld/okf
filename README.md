@@ -325,9 +325,12 @@ final repair = await writer.prepare(
 `OkfPreparedCandidate.toLoadResult()` reads a candidate as a later load of the
 committed bundle would, so checks written against `OkfBundleLoadResult` can
 judge it before commit. `okfVersion` is this package's version, and
-`okfIndexGeneratorRevision` names the release that last changed the
-generator's output bytes; it changes only in a minor release, so compare
-generated indexes against it rather than against a patch range.
+`okfIndexGeneratorRevision` identifies the generator's output bytes: every
+release with the same revision generates the same indexes for the same
+bundle. It is `0.5.0`, the baseline the promise starts from, and a change to
+the output ships only in a minor release that sets the revision to its own
+version, so compare generated indexes against it rather than against a patch
+range.
 
 See [`example/okf.dart`][example] for a complete command-line example.
 
