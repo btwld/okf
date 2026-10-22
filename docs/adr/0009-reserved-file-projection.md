@@ -2,7 +2,8 @@
 
 - Status: proposed
 - Date: 2026-10-22
-- Amends: [ADR-0003](0003-bundle-changeset-single-write-path.md)
+- Amends: [ADR-0003](0003-bundle-changeset-single-write-path.md),
+  [ADR-0004](0004-index-log-model-single-owner.md)
 
 ## Context
 
@@ -40,6 +41,12 @@ okf recorded for a concept change, or leave the change with no entry at all.
 The Spec requires no log entry: a `log.md` MAY appear at any level (§9). okf
 does not enforce its own entries; the closed validator judges a projected log
 by its §9 structure alone.
+
+This amends ADR-0004 for projected files. A projected text is a raw string
+from the caller, not an emission of the index/log model, so for it the
+write-then-validate round trip holds because preparation validates the
+candidate, not by construction at the model seam. The change set still emits
+its own index and log texts through the model.
 
 `okf_io.dart` exports `OkfBundleLock`, so a caller can hold `write` around
 `prepare` and `commit` and keep the source from changing between them. The

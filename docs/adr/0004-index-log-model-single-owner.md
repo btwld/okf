@@ -1,6 +1,6 @@
 # ADR-0004: One module owns the index/log entry format
 
-- Status: accepted
+- Status: accepted, amended by [ADR-0009](0009-reserved-file-projection.md)
 - Date: 2026-08-14
 - Issues: [#15](https://github.com/conceptadev/okf/issues/15), #14
 
