@@ -25,9 +25,10 @@ New concepts, `serialize` and `okf format` keep the canonical form.
   stands, a block mapping is edited entry by entry, and a flow collection by
   span while it keeps its entries. A block scalar stays a literal block when
   its new value has a line break. Other values take the emitter's spelling.
-- A new key goes directly after the last entry of its mapping, not at its
-  place in the preferred key order: reordering would move lines the change
-  did not touch.
+- In frontmatter that is not in canonical form, a new key goes directly
+  after the last entry of its mapping, not at its place in the preferred key
+  order: reordering would move lines the change did not touch. Canonical
+  frontmatter follows the next rule instead.
 - Canonical in, canonical out. Frontmatter that already holds exactly what
   the emitter writes for it, as `okf format` leaves it, stays that way: the
   edited block is written from its values in the emitter's form, which puts a
