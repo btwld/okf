@@ -2,13 +2,6 @@ targets:
   $default:
     builders:
       ack_generator:ack_generator:
-        enabled: false
-      ack_generator:ack_models:
-        generate_for:
-          - lib/src/document.dart
-          - lib/src/index_log.dart
-          - lib/src/mcp/inputs.dart
-      ack_generator:ack_model_json:
         generate_for:
           - lib/src/document.dart
           - lib/src/index_log.dart

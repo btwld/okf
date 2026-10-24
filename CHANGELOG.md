@@ -1,3 +1,13 @@
+## 0.6.1-dev.1
+
+- Move to Ack 2: depend on `ack: ^2.0.0-alpha.1` and generate with
+  `ack_generator` 2.0.0-alpha.1. `ack_annotations` is gone; the models use
+  `@Schemable()` from `package:ack/ack.dart`, and each library has one
+  generated `.g.dart` part. The MCP tools' input schemas are unchanged
+  except that a field Ack decodes into a Dart type (a concept ID) no longer
+  carries the `"x-transformed": true` annotation, which Ack 2 stopped
+  emitting.
+
 ## 0.6.0
 
 - Edit existing concepts in place. `OkfUpdateConceptChange`,

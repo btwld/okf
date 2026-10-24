@@ -22,7 +22,7 @@ void main() {
         loadYaml(File('pubspec.yaml').readAsStringSync()) as YamlMap;
     final version = pubspec['version'] as String;
 
-    expect(version, matches(RegExp(r'^\d+\.\d+\.\d+$')));
+    expect(version, matches(RegExp(r'^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$')));
     expect(
       File('lib/src/version.dart').readAsStringSync(),
       contains("'$version';"),

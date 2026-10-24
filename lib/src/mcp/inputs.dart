@@ -1,10 +1,8 @@
 import 'package:ack/ack.dart';
-import 'package:ack_annotations/ack_annotations.dart';
 
 import '../concept_id.dart';
 
-part 'inputs.ack.dart';
-part 'inputs.ack.g.dart';
+part 'inputs.g.dart';
 
 // The wire schema owns presence: optional arguments may be omitted, but may
 // not be null. Defaults belong to the tool implementation, especially for
@@ -26,7 +24,7 @@ final _bodySchema = Ack.string().describe(
   'Markdown body below the frontmatter.',
 );
 
-@AckInfer()
+@Schemable()
 final listConceptsInputSchema = Ack.object({
   'prefix': Ack.string()
       .minLength(1)
@@ -51,17 +49,17 @@ final listConceptsInputSchema = Ack.object({
       .optional(),
 });
 
-@AckInfer()
+@Schemable()
 final lookupConceptInputSchema = Ack.object({'id': _conceptIdSchema});
 
-@AckInfer()
+@Schemable()
 final validateInputSchema = Ack.object({
   'strict': Ack.boolean()
       .describe('Fail on advisories, as `--warnings-as-errors` does.')
       .optional(),
 });
 
-@AckInfer()
+@Schemable()
 final createConceptInputSchema = Ack.object({
   'id': _conceptIdSchema,
   'type': _conceptTypeSchema,
@@ -71,7 +69,7 @@ final createConceptInputSchema = Ack.object({
   'body': _bodySchema.optional(),
 });
 
-@AckInfer()
+@Schemable()
 final updateConceptInputSchema = Ack.object({
   'id': _conceptIdSchema,
   'type': _conceptTypeSchema.optional(),
@@ -81,7 +79,7 @@ final updateConceptInputSchema = Ack.object({
   'body': _bodySchema.optional(),
 });
 
-@AckInfer()
+@Schemable()
 final linkConceptsInputSchema = Ack.object({
   'source': _conceptIdSchema,
   'target': _conceptIdSchema,
@@ -91,7 +89,7 @@ final linkConceptsInputSchema = Ack.object({
       .describe('Producer-defined relationship type.'),
 });
 
-@AckInfer()
+@Schemable()
 final deprecateConceptInputSchema = Ack.object({
   'id': _conceptIdSchema,
   'note': Ack.string()
