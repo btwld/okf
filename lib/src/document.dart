@@ -1,15 +1,13 @@
 import 'dart:collection';
 
 import 'package:ack/ack.dart';
-import 'package:ack_annotations/ack_annotations.dart';
 import 'package:yaml/yaml.dart';
 
 import 'metadata.dart';
 import 'yaml_data.dart';
 import 'yaml_emitter.dart';
 
-part 'document.ack.dart';
-part 'document.ack.g.dart';
+part 'document.g.dart';
 
 /// A failure to split or parse an OKF concept document.
 final class OkfDocumentException implements FormatException {
@@ -65,7 +63,7 @@ final class OkfDocumentException implements FormatException {
 /// One entry from a legacy v0.1 `# Citations` section.
 ///
 /// OKF v0.2 §13.1 permits this fallback; current provenance uses `sources`.
-@AckModel()
+@Schemable()
 final class OkfLegacyCitation with _$OkfLegacyCitationAck {
   /// Creates a parsed legacy citation.
   const OkfLegacyCitation({

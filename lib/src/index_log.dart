@@ -1,15 +1,13 @@
 import 'package:ack/ack.dart';
-import 'package:ack_annotations/ack_annotations.dart';
 
 import 'document.dart';
 import 'iso_date.dart';
 import 'link_path.dart';
 
-part 'index_log.ack.dart';
-part 'index_log.ack.g.dart';
+part 'index_log.g.dart';
 
 /// One entry in an OKF `index.md` document.
-@AckModel()
+@Schemable()
 final class OkfIndexEntry with _$OkfIndexEntryAck {
   /// Creates an index entry.
   const OkfIndexEntry({
@@ -33,7 +31,7 @@ final class OkfIndexEntry with _$OkfIndexEntryAck {
 }
 
 /// One dated entry in an OKF `log.md` document.
-@AckModel()
+@Schemable()
 final class OkfLogEntry with _$OkfLogEntryAck {
   /// Creates a log entry.
   const OkfLogEntry({

@@ -2,12 +2,9 @@ import 'dart:io';
 
 /// The Ack parts that `dart run build_runner build` writes.
 const _generatedPaths = <String>[
-  'lib/src/document.ack.dart',
-  'lib/src/document.ack.g.dart',
-  'lib/src/index_log.ack.dart',
-  'lib/src/index_log.ack.g.dart',
-  'lib/src/mcp/inputs.ack.dart',
-  'lib/src/mcp/inputs.ack.g.dart',
+  'lib/src/document.g.dart',
+  'lib/src/index_log.g.dart',
+  'lib/src/mcp/inputs.g.dart',
 ];
 
 /// Regenerates the Ack models and compares them with the committed parts.
