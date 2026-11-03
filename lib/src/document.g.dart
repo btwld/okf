@@ -32,7 +32,7 @@ abstract final class OkfLegacyCitationSchema {
   static AckSchema<Map<String, Object?>, OkfLegacyCitation> get schema =>
       _okfLegacyCitationSchema;
 
-  /// The structural JSON map schema behind [schema].
+  /// Validates like [schema] and returns the JSON map instead of the model.
   static AckSchema<Map<String, Object?>, Map<String, Object?>> get wireSchema =>
       _okfLegacyCitationWireSchema;
 

@@ -29,7 +29,7 @@ abstract final class OkfIndexEntrySchema {
   static AckSchema<Map<String, Object?>, OkfIndexEntry> get schema =>
       _okfIndexEntrySchema;
 
-  /// The structural JSON map schema behind [schema].
+  /// Validates like [schema] and returns the JSON map instead of the model.
   static AckSchema<Map<String, Object?>, Map<String, Object?>> get wireSchema =>
       _okfIndexEntryWireSchema;
 
@@ -192,7 +192,7 @@ abstract final class OkfLogEntrySchema {
   static AckSchema<Map<String, Object?>, OkfLogEntry> get schema =>
       _okfLogEntrySchema;
 
-  /// The structural JSON map schema behind [schema].
+  /// Validates like [schema] and returns the JSON map instead of the model.
   static AckSchema<Map<String, Object?>, Map<String, Object?>> get wireSchema =>
       _okfLogEntryWireSchema;
 
