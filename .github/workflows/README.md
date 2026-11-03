@@ -18,7 +18,7 @@
 2. **Release** (ubuntu) — `pkg-github-release`, `pkg-github-linux`, then
    `dart pub publish --force`
 3. **Deploy macOS** — `pkg-github-macos`, then the Homebrew formula, versioned
-   and unversioned
+   and, unless the version is a prerelease, unversioned
 
 Release notes come from the first `## <version>` section of `CHANGELOG.md`.
 
@@ -47,7 +47,10 @@ must match step 1.
   cli_pkg hardcodes the GitHub release's `tag_name` to the **bare** version, so
   the release job also publishes a `X.Y.Z` tag at the same commit and the
   release assets hang off that one. Both tags therefore exist for every
-  release, and `btwld/okf@vX.Y.Z` keeps working as an action ref.
+  release, and `btwld/okf@vX.Y.Z` keeps working as an action ref. A
+  prerelease such as `v0.7.0-dev.1` takes the same path; okf must be one
+  while it depends on a prerelease, or pub warns and the publish dry run
+  fails.
 - **CHANGELOG**: cli_pkg reads `CHANGELOG.md` for the GitHub release body
 - **Assets**: `okf-<version>-<os>-<arch>.tar.gz` per platform, attached to the
   bare-version release. Only the
@@ -83,7 +86,9 @@ build and the keg holds only the 10MB executable. Bump `dart_sdk_version` and
 its four digests there when the SDK needs refreshing.
 
 `--versioned-formula` additionally copies the result to `Formula/okf@X.Y.Z.rb`,
-so the tap accumulates one file per release.
+so the tap accumulates one file per release. A prerelease gets only that
+versioned file, so `brew install btwld/tap/okf` stays on the latest stable
+release.
 
 ## Troubleshooting
 
