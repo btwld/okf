@@ -1,12 +1,23 @@
-## 0.6.1-dev.1
+## 0.7.0-dev.1
 
-- Move to Ack 2: depend on `ack: ^2.0.0-alpha.1` and generate with
-  `ack_generator` 2.0.0-alpha.1. `ack_annotations` is gone; the models use
-  `@Schemable()` from `package:ack/ack.dart`, and each library has one
-  generated `.g.dart` part. The MCP tools' input schemas are unchanged
-  except that a field Ack decodes into a Dart type (a concept ID) no longer
-  carries the `"x-transformed": true` annotation, which Ack 2 stopped
-  emitting.
+- **Breaking:** move to Ack 2. okf depends on `ack: ^2.0.0-beta.1` instead of
+  `ack: ^1.2.0`, so a package that also depends on Ack 1 no longer resolves
+  with it. `OkfLegacyCitationSchema`, `OkfIndexEntrySchema` and
+  `OkfLogEntrySchema` keep their members, but `schema`, `wireSchema`,
+  `safeParse`, `safeEncode` and `toSchemaModel` now return Ack 2's
+  `AckSchema`, `SchemaResult` and `AckSchemaModel`, and so does each model's
+  `safeToJson`. `copyWith` on `OkfLegacyCitation`, `OkfIndexEntry` and
+  `OkfLogEntry` is now a getter that returns a callable copier; calls such as
+  `entry.copyWith(title: 'New')` read the same. This is a prerelease because
+  okf now depends on one.
+- The MCP tools' input schemas, `OkfGraphQuery.jsonSchema` and the models'
+  `toJsonSchema()` are unchanged except that a schema Ack decodes into a Dart
+  type no longer carries `"x-transformed": true`, which Ack 2 stopped
+  emitting. That drops it from every concept ID field, from the root of the
+  `query-graph` tool's input schema and from the root of each model's schema.
+- The models use `@Schemable()` from `package:ack/ack.dart` and are generated
+  by `ack_generator` 2.0.0-beta.1 into one `.g.dart` part per library;
+  `ack_annotations` is no longer a dependency.
 
 ## 0.6.0
 

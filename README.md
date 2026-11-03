@@ -94,7 +94,7 @@ Gate a repository on OKF Spec conformance with one step and no configuration:
 
 ```yaml
 steps:
-  - uses: btwld/okf@v0.6.1-dev.1
+  - uses: btwld/okf@v0.7.0-dev.1
 ```
 
 The action downloads the released `okf` archive for the ref in `uses`, unpacks
@@ -481,7 +481,8 @@ Tests mirror those boundaries: domain tests live at `test/`, with `io/`,
 automation checks live in `test/ci/`; process helpers live in `test/support/`.
 Run `dart test` from the package root to include every suite.
 
-MCP inputs use Ack's `@AckInfer()` schemas in `lib/src/mcp/inputs.dart`.
+MCP inputs are schema-first Ack schemas annotated with `@Schemable()` in
+`lib/src/mcp/inputs.dart`.
 The schema defines both runtime parsing and the JSON Schema advertised to
 clients. Schema-first generation preserves the distinction between omitted
 arguments and explicit nulls, including partial updates. Graph queries use
@@ -493,20 +494,20 @@ The advertised JSON Schema describes their string shape; runtime parsing
 enforces the domain's path rules. MCP and graph-query errors share a formatter
 that preserves nested field paths and reasons without producing an OKF Report.
 
-Inferring these optional inputs from nullable Dart fields with `@AckModel()`
-would also permit explicit nulls. Their wire contract therefore remains the
-source of truth through `@AckInfer()`.
+Inferring these optional inputs from nullable fields of a hand-written class
+would also permit explicit nulls. Their wire schema therefore remains the
+source of truth, and Ack generates the input classes from it.
 
-Index/log entries and legacy citation values use `@AckModel()` to generate
+Index/log entries and legacy citation values are hand-written classes
+annotated with `@Schemable()`; Ack generates their schema companions,
 equality, hashing, `copyWith`, and diagnostic strings. Their Markdown parsers
 and emitters still own the OKF document format. Entry constructors remain
 permissive so parsing can retain malformed content for validation.
 
-Ack 1.2 supports validation in generative constructors, but requires that
-constructor shape and rejects custom methods that override generated members.
-IDs, diagnostics, and documents retain their domain validation and custom
-formatting; switching their constructor syntax alone does not make them
-compatible with generated members.
+Ack's generated constructors do not validate, and its generated mixin owns
+equality, hashing, and diagnostic strings. IDs, diagnostics, and documents
+validate in their constructors and format themselves, so they stay
+hand-written.
 
 Legacy citation extraction is an optional v0.1 compatibility feature permitted
 by OKF v0.2 §13.1. Current provenance comes from `sources` frontmatter.
