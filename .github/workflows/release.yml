@@ -36,11 +36,12 @@ jobs:
       # cli_pkg hardcodes the release's tag_name to the bare pubspec version
       # and attaches every asset to that tag. Publish it at this commit first:
       # left to itself, GitHub invents the tag at the default branch head,
-      # which is not necessarily what was tagged and tested.
+      # which is not necessarily what was tagged and tested. A prerelease
+      # suffix is allowed: a release that depends on a prerelease must be one.
       - name: Tag the release commit with the bare version
         run: |
           [[ "$GITHUB_REF_TYPE" == tag ]]
-          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]
           version="${GITHUB_REF_NAME#v}"
           if git ls-remote --exit-code --tags origin "$version" >/dev/null; then
             echo "okf: $version already exists"
@@ -121,7 +122,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GH_TOKEN }}
 
+      # A prerelease gets only its versioned formula: `okf` stays on the
+      # latest stable release. cli_pkg would also write the versioned formula
+      # here for a prerelease, which the previous step already committed, and
+      # fail on the empty commit.
       - name: Deploy Homebrew
+        if: ${{ !contains(github.ref_name, '-') }}
         working-directory: tool/release
         run: dart run grinder pkg-homebrew-update
         env:

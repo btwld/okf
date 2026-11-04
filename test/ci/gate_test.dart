@@ -22,7 +22,7 @@ void main() {
         loadYaml(File('pubspec.yaml').readAsStringSync()) as YamlMap;
     final version = pubspec['version'] as String;
 
-    expect(version, matches(RegExp(r'^\d+\.\d+\.\d+$')));
+    expect(version, matches(RegExp(r'^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$')));
     expect(
       File('lib/src/version.dart').readAsStringSync(),
       contains("'$version';"),
@@ -134,6 +134,24 @@ void main() {
     // cli_pkg hardcodes the release's tag_name to the bare version. Without
     // this tag, GitHub creates it at the default branch head instead.
     expect(release.toString(), contains('git push origin "\$version"'));
+    // A package that depends on a prerelease must be one, so the tag check
+    // accepts the same prerelease suffix the version gate does.
+    expect(
+      release.toString(),
+      contains(r'=~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]'),
+    );
+    // A prerelease must not move the unversioned formula off the latest
+    // stable release; its versioned formula is the only one it writes.
+    final homebrewSteps = <YamlMap>[
+      for (final step in macos['steps'] as YamlList)
+        if ((step as YamlMap)['run'] == 'dart run grinder pkg-homebrew-update')
+          step,
+    ];
+    expect(homebrewSteps, hasLength(1));
+    expect(
+      homebrewSteps.single['if'],
+      r"${{ !contains(github.ref_name, '-') }}",
+    );
 
     final grind = File('tool/release/tool/grind.dart').readAsStringSync();
     expect(
