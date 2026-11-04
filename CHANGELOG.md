@@ -10,6 +10,13 @@
   `OkfLogEntry` is now a getter that returns a callable copier; calls such as
   `entry.copyWith(title: 'New')` read the same. This is a prerelease because
   okf now depends on one.
+- **Breaking:** `OkfLegacyCitationSchema.wireSchema`,
+  `OkfIndexEntrySchema.wireSchema` and `OkfLogEntrySchema.wireSchema` now
+  return detached, unmodifiable maps from both `parse` and `encode`, rather
+  than the caller's original map. Code that mutates a returned map now throws
+  `UnsupportedError`, and later changes to the input map no longer affect the
+  result. Copy the result before editing it, for example
+  `final editable = Map<String, Object?>.from(result);`.
 - The MCP tools' input schemas, `OkfGraphQuery.jsonSchema` and the models'
   `toJsonSchema()` are unchanged except that a schema Ack decodes into a Dart
   type no longer carries `"x-transformed": true`, which Ack 2 stopped
