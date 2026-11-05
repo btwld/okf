@@ -7,6 +7,7 @@ part of 'document.dart';
 // **************************************************************************
 
 // ignore_for_file: type=lint
+// ignore_for_file: invalid_use_of_internal_member
 // coverage:ignore-file
 
 final _okfLegacyCitationObject = Ack.object({

@@ -1,6 +1,6 @@
-## 0.7.0-dev.1
+## 0.7.0-beta.1
 
-- **Breaking:** move to Ack 2. okf depends on `ack: ^2.0.0-beta.1` instead of
+- **Breaking:** move to Ack 2. okf depends on `ack: ^2.0.0-beta.2` instead of
   `ack: ^1.2.0`, so a package that also depends on Ack 1 no longer resolves
   with it. `OkfLegacyCitationSchema`, `OkfIndexEntrySchema` and
   `OkfLogEntrySchema` keep their members, but `schema`, `wireSchema`,
@@ -23,7 +23,7 @@
   emitting. That drops it from every concept ID field, from the root of the
   `query-graph` tool's input schema and from the root of each model's schema.
 - The models use `@Schemable()` from `package:ack/ack.dart` and are generated
-  by `ack_generator` 2.0.0-beta.1 into one `.g.dart` part per library;
+  by `ack_generator` 2.0.0-beta.2 into one `.g.dart` part per library;
   `ack_annotations` is no longer a dependency.
 
 ## 0.6.0

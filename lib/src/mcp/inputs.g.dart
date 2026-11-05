@@ -7,6 +7,7 @@ part of 'inputs.dart';
 // **************************************************************************
 
 // ignore_for_file: type=lint
+// ignore_for_file: invalid_use_of_internal_member
 // coverage:ignore-file
 
 /// Immutable model generated from `listConceptsInputSchema`.
@@ -86,7 +87,7 @@ final class ListConceptsInput {
 
   @override
   String toString() =>
-      'ListConceptsInput(prefix: $prefix, type: $type, query: $query)';
+      'ListConceptsInput(prefix: ${prefix}, type: ${type}, query: ${query})';
 
   static ListConceptsInput _fromAckRuntime(Map<String, Object?> value) =>
       ListConceptsInput(
@@ -204,7 +205,7 @@ final class LookupConceptInput {
   int get hashCode => Object.hashAll([runtimeType, deepHashCode(id)]);
 
   @override
-  String toString() => 'LookupConceptInput(id: $id)';
+  String toString() => 'LookupConceptInput(id: ${id})';
 
   static LookupConceptInput _fromAckRuntime(Map<String, Object?> value) =>
       LookupConceptInput(id: value['id'] as OkfConceptId);
@@ -297,7 +298,7 @@ final class ValidateInput {
   int get hashCode => Object.hashAll([runtimeType, deepHashCode(strict)]);
 
   @override
-  String toString() => 'ValidateInput(strict: $strict)';
+  String toString() => 'ValidateInput(strict: ${strict})';
 
   static ValidateInput _fromAckRuntime(Map<String, Object?> value) =>
       ValidateInput(strict: value['strict'] as bool?);
@@ -435,7 +436,7 @@ final class CreateConceptInput {
 
   @override
   String toString() =>
-      'CreateConceptInput(id: $id, type: $type, title: $title, description: $description, tags: $tags, body: $body)';
+      'CreateConceptInput(id: ${id}, type: ${type}, title: ${title}, description: ${description}, tags: ${tags}, body: ${body})';
 
   static CreateConceptInput _fromAckRuntime(Map<String, Object?> value) =>
       CreateConceptInput(
@@ -613,7 +614,7 @@ final class UpdateConceptInput {
 
   @override
   String toString() =>
-      'UpdateConceptInput(id: $id, type: $type, title: $title, description: $description, tags: $tags, body: $body)';
+      'UpdateConceptInput(id: ${id}, type: ${type}, title: ${title}, description: ${description}, tags: ${tags}, body: ${body})';
 
   static UpdateConceptInput _fromAckRuntime(Map<String, Object?> value) =>
       UpdateConceptInput(
@@ -772,7 +773,7 @@ final class LinkConceptsInput {
 
   @override
   String toString() =>
-      'LinkConceptsInput(source: $source, target: $target, relationship: $relationship)';
+      'LinkConceptsInput(source: ${source}, target: ${target}, relationship: ${relationship})';
 
   static LinkConceptsInput _fromAckRuntime(Map<String, Object?> value) =>
       LinkConceptsInput(
@@ -888,7 +889,7 @@ final class DeprecateConceptInput {
       Object.hashAll([runtimeType, deepHashCode(id), deepHashCode(note)]);
 
   @override
-  String toString() => 'DeprecateConceptInput(id: $id, note: $note)';
+  String toString() => 'DeprecateConceptInput(id: ${id}, note: ${note})';
 
   static DeprecateConceptInput _fromAckRuntime(Map<String, Object?> value) =>
       DeprecateConceptInput(

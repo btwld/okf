@@ -48,7 +48,7 @@ must match step 1.
   the release job also publishes a `X.Y.Z` tag at the same commit and the
   release assets hang off that one. Both tags therefore exist for every
   release, and `btwld/okf@vX.Y.Z` keeps working as an action ref. A
-  prerelease such as `v0.7.0-dev.1` takes the same path; okf must be one
+  prerelease such as `v0.7.0-beta.1` takes the same path; okf must be one
   while it depends on a prerelease, or pub warns and the publish dry run
   fails.
 - **CHANGELOG**: cli_pkg reads `CHANGELOG.md` for the GitHub release body
